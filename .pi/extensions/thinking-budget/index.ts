@@ -39,8 +39,59 @@ type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "
 //      (`input` event), at which point the prior level is restored so the next
 //      task can think again. (A new task should not inherit "off" just because
 //      a previous one over-thought.)
+//
+// ── Issue #131 (fixed in this change) ───────────────────────────────────────
+// Step 3 had a hole: the queued nudge is itself input, carrying pi's
+// `source: "extension"`, so it restored the level the breach had just disabled
+// and the restart turn thought at full level and breached again. One breach
+// became a think → abort → think loop. See the `input` handler.
 
 const DEFAULT_BUDGET = 4096;
+
+// ── Issue #130 / #137: which budget is actually in force ────────────────────
+// Since v1.14.0 (0b72340) resolution was one `||` chain that tested the
+// *profile* budget first. Every entry in the shipped `.pi/settings.json` sets
+// `thinking_budget: 4096`, so a profile budget is always present and always
+// won: `LITTLE_CODER_THINKING_BUDGET` could never apply, and `DEFAULT_BUDGET`
+// was unreachable. The only way left to raise the cap was editing a file
+// inside the npm package, which the next `npm i -g little-coder@latest` erases.
+//
+// Outside benchmark mode the order is now env → profile → default: an env var
+// is the user overriding a shipped default, and a shipped default should lose.
+// With `LITTLE_CODER_BENCHMARK` set the profile still wins, because a
+// benchmark profile's tuned budget is part of the measurement and an inherited
+// shell variable would silently change what a run is comparable against.
+export interface ResolvedThinkingBudget {
+  budget: number;
+  /** Which source won — surfaced in the notice and asserted by tests. */
+  source: "env" | "profile" | "default";
+  /** True when an env value replaced a *different* profile value. */
+  envOverrodeProfile: boolean;
+}
+
+export function resolveThinkingBudget(
+  profileBudget: number,
+  envBudget: number,
+  benchmark: boolean,
+): ResolvedThinkingBudget {
+  const valid = (n: number) => Number.isFinite(n) && n > 0;
+  const hasProfile = valid(profileBudget);
+  const hasEnv = valid(envBudget);
+  if (benchmark && hasProfile) {
+    return { budget: profileBudget, source: "profile", envOverrodeProfile: false };
+  }
+  if (hasEnv) {
+    return {
+      budget: envBudget,
+      source: "env",
+      envOverrodeProfile: hasProfile && envBudget !== profileBudget,
+    };
+  }
+  if (hasProfile) {
+    return { budget: profileBudget, source: "profile", envOverrodeProfile: false };
+  }
+  return { budget: DEFAULT_BUDGET, source: "default", envOverrodeProfile: false };
+}
 
 // Per-run rolling state.
 let thinkingChars = 0;
@@ -54,6 +105,10 @@ let forcedOff = false;
 // The thinking level in effect when we first forced it off, restored on the
 // next user input so a new task is unaffected.
 let priorLevel: ThinkingLevel | undefined;
+// The env-overrode-profile notice is once per session, not once per run:
+// `before_agent_start` fires for every run, and a config notice repeated on
+// every prompt is noise.
+let envNoticeShown = false;
 
 function charsToTokens(chars: number): number {
   // Matches local/context_manager.estimate_tokens (len/3.5)
@@ -90,6 +145,7 @@ export default function (pi: ExtensionAPI) {
     aborted = false;
     forcedOff = false;
     priorLevel = undefined;
+    envNoticeShown = false;
   });
 
   // Hard reset of per-turn counters between agent runs. `forcedOff` /
@@ -103,9 +159,18 @@ export default function (pi: ExtensionAPI) {
   });
 
   // A genuinely new user prompt ends the "forced off" window: restore the
-  // level the user actually had before the breach. Programmatic follow-ups
-  // (our nudge) do not emit an `input` event, so the restart turn stays off.
-  pi.on("input", async () => {
+  // level the user actually had before the breach.
+  //
+  // The old comment here read "programmatic follow-ups (our nudge) do not emit
+  // an `input` event". That is wrong (issue #131): pi's `sendUserMessage` goes
+  // through `AgentSession.prompt(..., { source: "extension" })`, so the
+  // follow-up this extension queues itself fires `input` back at the handler
+  // that queued it. It restored `priorLevel` immediately, the restart turn
+  // thought at full level again, and one breach became a loop — observed in a
+  // real session as 18 `off` → `medium` level changes and 4 nudges. Input from
+  // an extension is not a new task, so it must not restore the level.
+  pi.on("input", async (event) => {
+    if ((event as any).source === "extension") return;
     if (forcedOff) {
       if (priorLevel !== undefined) safeSetThinkingLevel(pi, priorLevel);
       forcedOff = false;
@@ -115,15 +180,30 @@ export default function (pi: ExtensionAPI) {
     aborted = false;
   });
 
-  pi.on("before_agent_start", async (event) => {
+  pi.on("before_agent_start", async (event, ctx) => {
     const opts: any = (event as any).systemPromptOptions ?? {};
     const lc = opts.littleCoder ?? {};
     const profileBudget = Number(lc.thinkingBudget);
-    const envBudget = Number(process.env.LITTLE_CODER_THINKING_BUDGET);
-    budgetForTurn =
-      (Number.isFinite(profileBudget) && profileBudget > 0 && profileBudget) ||
-      (Number.isFinite(envBudget) && envBudget > 0 && envBudget) ||
-      DEFAULT_BUDGET;
+    const resolved = resolveThinkingBudget(
+      profileBudget,
+      Number(process.env.LITTLE_CODER_THINKING_BUDGET),
+      Boolean(process.env.LITTLE_CODER_BENCHMARK),
+    );
+    budgetForTurn = resolved.budget;
+    // One line per session when the env value replaced a different profile
+    // value. The silence in #130 is what made the variable look broken instead
+    // of overridden, so name the number in force and where it came from.
+    if (resolved.envOverrodeProfile && !envNoticeShown) {
+      envNoticeShown = true;
+      try {
+        (ctx as any).ui?.notify?.(
+          `thinking budget: ${budgetForTurn} tokens (LITTLE_CODER_THINKING_BUDGET, overriding the profile's ${profileBudget})`,
+          "info",
+        );
+      } catch {
+        // Headless or stale ctx — the budget still applies.
+      }
+    }
   });
 
   pi.on("turn_start", async () => {

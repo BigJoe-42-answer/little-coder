@@ -4,12 +4,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Port of local/config.py::MODEL_PROFILES + get_model_profile with
-// benchmark_overrides. Reads .pi/settings.json's little_coder.model_profiles
-// block, applies the matching per-model profile (plus benchmark_overrides
-// when LITTLE_CODER_BENCHMARK=terminal_bench|gaia is set), and publishes
-// the resolved values on event.systemPromptOptions.littleCoder so the
-// other extensions (skill-inject, knowledge-inject, thinking-budget,
-// turn-cap) read them from a single source of truth.
+// benchmark_overrides. Reads the `little_coder` settings block from the
+// package's .pi/settings.json and then merges the user-level settings files
+// over it (see settingsCandidatePaths), applies the matching per-model profile
+// (plus benchmark_overrides when LITTLE_CODER_BENCHMARK=terminal_bench|gaia is
+// set), and publishes the resolved values on event.systemPromptOptions
+// .littleCoder so the other extensions (skill-inject, knowledge-inject,
+// thinking-budget, turn-cap) read them from a single source of truth.
 //
 // Context budget: `contextLimit` is NOT a hardcoded settings value — it
 // follows the model's live registered window (ctx.model.contextWindow, the
@@ -35,6 +36,7 @@ interface ModelProfile {
 interface LittleCoderSettings {
   default_model_profile?: ModelProfile;
   model_profiles?: Record<string, ModelProfile>;
+  [key: string]: unknown;
 }
 
 let settings: LittleCoderSettings | null = null;
@@ -45,26 +47,95 @@ function repoRoot(): string {
   return join(here, "..", "..", "..");
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+// Merge an overlay settings block over a base one, overlay winning field-wise.
+//
+// Exported for testing. The merge is deliberately shallow-but-per-profile:
+// `model_profiles["llamacpp/x"]` merges field by field so a user raising
+// `thinking_budget` does not have to restate `temperature`, `max_tokens` and
+// `benchmark_overrides` from the shipped file (and cannot accidentally drop
+// them by writing a partial profile). Unknown top-level keys pass through so a
+// newer schema is not silently discarded.
+export function mergeLittleCoder(
+  base: LittleCoderSettings,
+  overlay: LittleCoderSettings,
+): LittleCoderSettings {
+  const out: LittleCoderSettings = { ...base };
+  for (const [key, value] of Object.entries(overlay ?? {})) {
+    const baseVal = (base as Record<string, unknown>)[key];
+    if (key === "model_profiles" && isRecord(baseVal) && isRecord(value)) {
+      const profiles: Record<string, unknown> = { ...(baseVal as Record<string, unknown>) };
+      for (const [pk, pv] of Object.entries(value)) {
+        profiles[pk] = isRecord(pv) && isRecord(profiles[pk])
+          ? { ...(profiles[pk] as Record<string, unknown>), ...pv }
+          : pv;
+      }
+      out.model_profiles = profiles as Record<string, ModelProfile>;
+    } else if (key === "default_model_profile" && isRecord(baseVal) && isRecord(value)) {
+      out.default_model_profile = {
+        ...(baseVal as ModelProfile),
+        ...(value as ModelProfile),
+      };
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+// Settings files, lowest precedence first. The package's own copy is the
+// baseline; pi's agent dir and little-coder's config home may override it.
+// Both user paths honour the env vars the launcher itself honours
+// (`PI_CODING_AGENT_DIR`, `XDG_CONFIG_HOME`) — hard-coding `~/.pi/agent` would
+// miss anyone who moved the agent dir, which is exactly the audience trying to
+// override a profile.
+export function settingsCandidatePaths(env: NodeJS.ProcessEnv = process.env): string[] {
+  const home = env.HOME ?? "";
+  const agentDir = env.PI_CODING_AGENT_DIR || join(home, ".pi", "agent");
+  const configHome = env.XDG_CONFIG_HOME || join(home, ".config");
+  return [
+    join(repoRoot(), ".pi", "settings.json"),
+    join(agentDir, "settings.json"),
+    join(configHome, "little-coder", "settings.json"),
+  ];
+}
+
+// Read + merge every candidate. Exported for testing so the merge can be
+// exercised against real files without poking the module-level cache.
+export function loadSettingsFrom(paths: string[]): LittleCoderSettings | null {
+  let merged: LittleCoderSettings | null = null;
+  for (const p of paths) {
+    if (!existsSync(p)) continue;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(readFileSync(p, "utf-8"));
+    } catch {
+      // Loud, not silent: a malformed settings file used to be indistinguishable
+      // from "your profile does not apply".
+      console.error(`benchmark-profiles: ignoring malformed JSON in ${p}`);
+      continue;
+    }
+    if (!isRecord(raw) || !isRecord(raw.little_coder)) continue;
+    const block = raw.little_coder as LittleCoderSettings;
+    merged = merged ? mergeLittleCoder(merged, block) : { ...block };
+  }
+  return merged;
+}
+
 function loadSettings(): void {
   if (loaded) return;
   loaded = true;
-  // Try project .pi/settings.json first, then ~/.pi/agent/settings.json
-  const candidates = [
-    join(repoRoot(), ".pi", "settings.json"),
-    join(process.env.HOME ?? "", ".pi", "agent", "settings.json"),
-  ];
-  for (const p of candidates) {
-    if (!existsSync(p)) continue;
-    try {
-      const raw = JSON.parse(readFileSync(p, "utf-8"));
-      if (raw && typeof raw === "object" && raw.little_coder) {
-        settings = raw.little_coder as LittleCoderSettings;
-        return;
-      }
-    } catch {
-      // ignore malformed settings
-    }
-  }
+  // Merge every candidate, later (user-level) files winning.
+  //
+  // This used to be first-hit-wins with a `return` inside the loop. The
+  // package's own `.pi/settings.json` always exists and always carries a
+  // `little_coder` block, so the first candidate always matched and every
+  // user-level file was unreachable: a user could raise `thinking_budget` only
+  // by editing a file inside the npm package (issue #130).
+  settings = loadSettingsFrom(settingsCandidatePaths());
 }
 
 // Normalize the separator between model-name segments so a profile key written

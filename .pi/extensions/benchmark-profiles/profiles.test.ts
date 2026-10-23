@@ -1,20 +1,25 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import benchmarkProfiles, {
   resolveProfileFrom,
   normKey,
   resolveContextLimit,
+  mergeLittleCoder,
+  loadSettingsFrom,
+  settingsCandidatePaths,
   CONTEXT_FALLBACK,
   providerAcceptsTemperature,
 } from "./index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const settingsPath = join(here, "..", "..", "settings.json");
+const readJson = (p: string) => JSON.parse(readFileSync(p, "utf-8"));
 
 describe("benchmark-profiles resolution against real settings.json", () => {
-  const settings = JSON.parse(readFileSync(settingsPath, "utf-8")).little_coder;
+  const settings = readJson(settingsPath).little_coder;
 
   it("resolves base profile for llamacpp/qwen3.6-35b-a3b (budget bumped to 4096)", () => {
     const p = resolveProfileFrom(settings, "llamacpp/qwen3.6-35b-a3b");
@@ -199,5 +204,133 @@ describe("before_provider_request only injects temperature for accepting provide
       { messages: [] },
     );
     expect(out).toBeUndefined();
+  });
+});
+
+// ── Issue #130: user-level settings must be reachable ─────────────────────
+// loadSettings() used to `return` on the first candidate that carried a
+// `little_coder` block. The first candidate is the file inside the npm package,
+// which always exists and always carries that block, so a user's own
+// settings.json was never read: raising `thinking_budget` (or adding a profile
+// for a provider the shipped file doesn't know, e.g. `strata/…`) required
+// editing a root-owned file under /usr/lib that the next install erases.
+describe("layered settings merge (issue #130)", () => {
+  const shipped = readJson(settingsPath).little_coder;
+
+  function tmpWith(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), "lc-profiles-"));
+    for (const [rel, body] of Object.entries(files)) {
+      const p = join(dir, rel);
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, body);
+    }
+    return dir;
+  }
+
+  it("mergeLittleCoder merges default_model_profile field-wise", () => {
+    const merged = mergeLittleCoder(shipped, {
+      default_model_profile: { thinking_budget: 32000 },
+    });
+    expect(merged.default_model_profile?.thinking_budget).toBe(32000);
+    // Fields the overlay never mentioned survive: a partial profile cannot
+    // silently drop the shipped temperature or skill budget.
+    expect(merged.default_model_profile?.temperature).toBe(0.3);
+    expect(merged.default_model_profile?.skill_token_budget).toBe(300);
+  });
+
+  it("an existing per-model profile merges field-wise and keeps benchmark_overrides", () => {
+    const merged = mergeLittleCoder(shipped, {
+      model_profiles: { "llamacpp/qwen3.6-35b-a3b": { thinking_budget: 8192 } },
+    });
+    expect(resolveProfileFrom(merged, "llamacpp/qwen3.6-35b-a3b").thinking_budget).toBe(8192);
+    // Benchmark runs stay comparable: the shipped overrides were not mentioned.
+    expect(resolveProfileFrom(merged, "llamacpp/qwen3.6-35b-a3b", "gaia").thinking_budget).toBe(2000);
+    expect(resolveProfileFrom(merged, "llamacpp/qwen3.6-35b-a3b", "gaia").context_limit).toBe(65536);
+  });
+
+  it("a user profile for a provider the shipped file does not know is added", () => {
+    const merged = mergeLittleCoder(shipped, {
+      model_profiles: { "strata/iq3_s": { thinking_budget: 24000, temperature: 0.6 } },
+    });
+    const p = resolveProfileFrom(merged, "strata/iq3_s");
+    expect(p.thinking_budget).toBe(24000);
+    expect(p.temperature).toBe(0.6);
+    // Untouched providers still fall back to the (merged) default profile.
+    expect(resolveProfileFrom(merged, "strata/other").thinking_budget).toBe(4096);
+  });
+
+  it("later files win, and the package file is the first candidate", () => {
+    const dirs = tmpWith({
+      "pkg/.pi/settings.json": JSON.stringify({
+        little_coder: { default_model_profile: { thinking_budget: 4096, temperature: 0.3 } },
+      }),
+      "agent/settings.json": JSON.stringify({
+        little_coder: { default_model_profile: { thinking_budget: 12000 } },
+      }),
+      "xdg/little-coder/settings.json": JSON.stringify({
+        little_coder: { default_model_profile: { temperature: 0.7 } },
+      }),
+    });
+    try {
+      const merged = loadSettingsFrom([
+        join(dirs, "pkg/.pi/settings.json"),
+        join(dirs, "agent/settings.json"),
+        join(dirs, "xdg/little-coder/settings.json"),
+      ])!;
+      expect(merged.default_model_profile).toEqual({
+        thinking_budget: 12000,
+        temperature: 0.7,
+      });
+    } finally {
+      rmSync(dirs, { recursive: true, force: true });
+    }
+    const paths = settingsCandidatePaths({ HOME: "/home/u" } as NodeJS.ProcessEnv);
+    expect(paths[0]).toBe(join(here, "..", "..", "settings.json"));
+    expect(paths[1]).toBe(join("/home/u", ".pi", "agent", "settings.json"));
+    expect(paths[2]).toBe(join("/home/u", ".config", "little-coder", "settings.json"));
+  });
+
+  it("honours PI_CODING_AGENT_DIR and XDG_CONFIG_HOME rather than hardcoding ~", () => {
+    const paths = settingsCandidatePaths({
+      HOME: "/home/u",
+      PI_CODING_AGENT_DIR: "/elsewhere/agent",
+      XDG_CONFIG_HOME: "/elsewhere/config",
+    } as NodeJS.ProcessEnv);
+    expect(paths[1]).toBe(join("/elsewhere/agent", "settings.json"));
+    expect(paths[2]).toBe(join("/elsewhere/config", "little-coder", "settings.json"));
+  });
+
+  it("a malformed file is skipped, not treated as 'no settings'", () => {
+    const dirs = tmpWith({
+      "agent/settings.json": "{ this is not json",
+      "xdg/little-coder/settings.json": JSON.stringify({
+        little_coder: { default_model_profile: { thinking_budget: 9000 } },
+      }),
+    });
+    const errors: string[] = [];
+    const prev = console.error;
+    console.error = (m: string) => errors.push(String(m));
+    try {
+      const merged = loadSettingsFrom([
+        join(dirs, "agent/settings.json"),
+        join(dirs, "xdg/little-coder/settings.json"),
+      ])!;
+      expect(merged.default_model_profile?.thinking_budget).toBe(9000);
+      expect(errors.join("\n")).toMatch(/malformed JSON/);
+    } finally {
+      console.error = prev;
+      rmSync(dirs, { recursive: true, force: true });
+    }
+  });
+
+  it("a settings file with no little_coder block does not reset the merge", () => {
+    const dirs = tmpWith({
+      "agent/settings.json": JSON.stringify({ quietStartup: true, theme: "dark" }),
+    });
+    try {
+      expect(loadSettingsFrom([join(dirs, "agent/settings.json")])).toBeNull();
+    } finally {
+      rmSync(dirs, { recursive: true, force: true });
+    }
   });
 });

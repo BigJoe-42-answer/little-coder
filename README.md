@@ -296,6 +296,35 @@ Set `id` to whatever model your server reports, and `baseUrl` to its `/v1` endpo
 
 `.pi/settings.json` is a separate concern: it controls per-model **profiles** (context_limit, thinking_budget, temperature, benchmark_overrides) referenced by the `<provider>/<id>` key. Profiles don't register or describe models — they only tune how little-coder runs against models that are already registered.
 
+### Raising the thinking budget
+
+The `thinking-budget` extension aborts a turn whose thinking exceeds the budget and queues a nudge to commit to an implementation. The budget is in **estimated tokens** (`⌈chars / 3.5⌉`), counted per turn. Two ways to change it, in the order they are consulted:
+
+1. **`LITTLE_CODER_THINKING_BUDGET`** — the quick knob, and the only one that works without touching the installed package:
+
+   ```bash
+   LITTLE_CODER_THINKING_BUDGET=16000 little-coder
+   ```
+
+   Outside benchmark mode this **overrides** the profile value, and little-coder says so once per session (`thinking budget: 16000 tokens (LITTLE_CODER_THINKING_BUDGET, overriding the profile's 4096)`). With `LITTLE_CODER_BENCHMARK=terminal_bench|gaia` set, the profile keeps winning — a benchmark run's tuned budget is part of the measurement, and an inherited shell variable would silently change what that run is comparable against. A value that isn't a positive number is ignored.
+
+2. **A profile in your own settings file.** Settings are layered, later files winning, and profiles merge **field by field** — a partial profile only changes what you wrote, so you never have to restate (or can accidentally drop) the shipped `temperature`, `max_tokens` or `benchmark_overrides`:
+
+   ```bash
+   # ~/.pi/agent/settings.json   (or $PI_CODING_AGENT_DIR/settings.json,
+   # or $XDG_CONFIG_HOME/little-coder/settings.json)
+   {
+     "little_coder": {
+       "default_model_profile": { "thinking_budget": 12000 },
+       "model_profiles": {
+         "strata/my-model": { "thinking_budget": 24000 }
+       }
+     }
+   }
+   ```
+
+   The package's own `.pi/settings.json` is the baseline; you never need to edit a file inside `node_modules`. A profile key you invent is added, which is how a provider the shipped file has never heard of gets its own tuning; a model with no matching key falls back to `default_model_profile`.
+
 ---
 
 ## Background jobs
