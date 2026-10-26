@@ -71,10 +71,22 @@ if sudo cp "$REPO/.pi/extensions/extra-tools/index.ts" "$INST/.pi/extensions/ext
 else
   say "  FAIL  could not copy extra-tools/index.ts"; FAIL=$((FAIL + 1))
 fi
+# The browser half is part of the gate. It enforces the destinations the model
+# never NAMES — a link click, a redirect hop, a back-navigation — which a hook
+# that only reads tool inputs structurally cannot see. url-gate installed
+# without it is a half-applied policy.
+mkdir -p "$INST/.pi/extensions/browser"
+for f in index.ts request-gate.ts url-gate-browser.test.ts; do
+  if sudo cp "$REPO/.pi/extensions/browser/$f" "$INST/.pi/extensions/browser/$f"; then
+    say "  copied browser/$f"
+  else
+    say "  FAIL  could not copy browser/$f"; FAIL=$((FAIL + 1))
+  fi
+done
 
 say
 say "== installed code matches the checkout, file by file"
-for pair in .pi/extensions/url-gate/gate.ts .pi/extensions/url-gate/index.ts .pi/extensions/url-gate/gate.test.ts .pi/extensions/extra-tools/index.ts; do
+for pair in .pi/extensions/url-gate/gate.ts .pi/extensions/url-gate/index.ts .pi/extensions/url-gate/gate.test.ts .pi/extensions/extra-tools/index.ts .pi/extensions/browser/index.ts .pi/extensions/browser/request-gate.ts .pi/extensions/browser/url-gate-browser.test.ts; do
   check "identical: $pair" diff -q "$REPO/$pair" "$INST/$pair"
 done
 
@@ -86,6 +98,10 @@ check "a no-UI refusal names the real cause instead of blaming LITTLE_CODER_URL_
   grep -q 'no interface to ask the user' "$INST/.pi/extensions/url-gate/gate.ts"
 check "URLs inside shell commands are scanned, not just tool inputs" \
   grep -q 'extractCommandUrls' "$INST/.pi/extensions/url-gate/index.ts"
+check "browser refusals happen at the request layer, and see every redirect hop" \
+  grep -q 'Fetch.requestPaused' "$INST/.pi/extensions/browser/request-gate.ts"
+check "service workers cannot fetch behind the gate" \
+  grep -q 'serviceWorkers: "block"' "$INST/.pi/extensions/browser/index.ts"
 check "webfetch re-checks every redirect hop" \
   grep -q 'checkRedirectHop' "$INST/.pi/extensions/extra-tools/index.ts"
 
@@ -111,6 +127,8 @@ say "== repo checks (tests + typecheck)"
 cd "$REPO" || exit 1
 check "url-gate, extra-tools, permission-gate tests" \
   node ./node_modules/vitest/vitest.mjs run .pi/extensions/url-gate .pi/extensions/extra-tools .pi/extensions/permission-gate
+check "browser half, live chromium (skips itself if the binary is absent)" \
+  node ./node_modules/vitest/vitest.mjs run .pi/extensions/browser/url-gate-browser.test.ts
 check "typecheck (tsc --noEmit)" node node_modules/typescript/bin/tsc --noEmit
 
 say

@@ -10,9 +10,12 @@ Working notes for whoever picks this up next. Everything below is dated against
   no PR. The separate thinking-budget work lives on
   `fix/thinking-budget-env-and-user-settings` (`7472f14`) and does **not** contain
   url-gate.
-- **Installed:** all four files byte-identical to the checkout in
-  `/usr/lib/node_modules/little-coder`; `scripts/url-gate-setup.sh` re-installs and
-  re-verifies (12/12 PASS log at `/tmp/url-gate-setup.log`).
+- **Installed:** NOT yet updated for the browser half — installing into
+  `/usr/lib/node_modules/little-coder` needs sudo, which this session cannot
+  type a password for. Re-run `bash ~/Projects/little-coder/scripts/url-gate-setup.sh`
+  (it now copies and verifies `browser/index.ts`, `browser/request-gate.ts` and the
+  live browser test alongside the url-gate files) before trusting the browser gate
+  in a real session.
 - **Policy:** live = `~/.config/little-coder/url-whitelist.json` (17 hosts),
   tracked copy = `config/url-whitelist.json`, currently identical. Runtime reads
   only the live one.
@@ -20,7 +23,10 @@ Working notes for whoever picks this up next. Everything below is dated against
   shell-command URL scanning (`curl` to an off-list host is refused while an
   on-list one runs); hot-reload after editing the file mid-session; sub-coders are
   gated and now report the real reason (no UI) instead of blaming an env var.
-- **Tests:** 102 pass across `url-gate`/`extra-tools`/`permission-gate`; `tsc` clean.
+- **Tests:** `url-gate/gate.test.ts` 34 (matching, file loading, session-allowed,
+  the browser-mode rules) and `browser/url-gate-browser.test.ts` 17 driven against
+  live chromium; the whole suite is 894 passing with one pre-existing failure
+  (`llama-cpp-provider/swap-reprobe`, see below, unrelated). `tsc` clean.
 
 ## P1 — upstream durability
 
@@ -40,26 +46,50 @@ command. Reviewers will ask about the bypass list at the bottom of this file; th
 README-level answer should be "tool-layer gate, network-layer fence if you need a
 hard boundary."
 
-## P1 — the browser half is unverified
+## Done — the browser half, verified at the layer that can see it
 
-Playwright's browser binary is not installed on this machine, which is also why
-three tests in the suite fail (`Executable doesn't exist at
-~/.cache/ms-playwright/…`). Needs `npx playwright install chromium` — a human has
-to run `npx` (it is not on the shell allowlist).
+`npx playwright install chromium` has been run, so chromium is present and the
+three previously-failing browser tests pass. The half that was unverified is now
+gated and covered by 17 live tests (`.pi/extensions/browser/url-gate-browser.test.ts`)
+that drive the real `Browser*` tools against a local server and assert on the
+**server's hit log** — "blocked" means the request never arrived, not that a tool
+printed an apology. Verified blocked: a `BrowserClick` to an off-list host, a form
+post, a 302 **hop** from an on-list URL, a meta refresh, a JS `location.href`, a
+`target=_blank` link, and a `BrowserBack` that would re-navigate an off-list
+history entry. Verified working: `BrowserHistory` stays clean of refused
+destinations, an on-list redirect chain still lands and renders, a gzipped page
+still extracts, and a host approved at the prompt passes the request gate too
+(otherwise the prompt's "yes" would produce a blocked page).
 
-Unverified paths: `BrowserNavigate`, `BrowserBack` re-navigating a history entry,
-`BrowserHistory`. Also ungated **by design** today, and worth deciding rather than
-discovering:
+Two things measured here that change the design, both written up in
+`.pi/extensions/browser/request-gate.ts`:
 
-- a `BrowserClick` that navigates to an off-list host (the model never names a URL);
-- JS/meta redirects and subresource loads inside an approved page;
-- `BrowserExtract` of a page already loaded.
+- **`page.on("request")` + `request.abort()` aborts nothing.** `abort()` only works
+  on a request intercepted by `page.route()`. The candidate fix in the old version
+  of this file was that listener, and it would have looked healthy while enforcing
+  nothing — the failure mode this whole extension is wary of.
+- **`page.route()` cannot see redirect hops.** Playwright treats a request and its
+  redirects as one unit: the handler fires for the original request and Chromium
+  follows the `Location` unseen. With a route installed, an on-list `/redirect302`
+  reached an off-list host at `status=200`. Walking the chain in the handler and
+  `route.fulfill()`-ing the result does block the hops, but it moves every document
+  through Node and breaks pages: the browser renders the target's bytes under the
+  **original** url (so relative links resolve against the wrong base) and
+  `content-encoding` must be stripped or a gzip body is decoded twice. Both
+  observed, both ugly.
 
-Candidate fix: a `page.on("request")` listener installed in `ensureSession()`
-(`.pi/extensions/browser/index.ts`) that aborts requests whose host is off-list,
-with the decision delegated to `url-gate/gate.ts` so hook, tool and browser agree.
-Expect fallout: it also kills third-party trackers/images, which breaks some pages,
-so it probably wants a mode (`off | main-frame | all`) rather than being always on.
+So the gate uses Chromium's CDP `Fetch.requestPaused`, which fires for each hop and
+leaves the browser doing its own fetching. `page.route()` stays as a fallback if no
+CDP session can be opened, with a test (`browserGateLayer() === "cdp"`) because a
+silent downgrade to that weaker layer once made every blocking test pass while hop
+protection was gone. Service workers are blocked (`serviceWorkers: "block"`): they
+fetch on a page's behalf behind page-level interception, which Playwright documents
+as a blind spot. `LITTLE_CODER_URL_GATE_BROWSER=main-frame|all|off` (default
+`main-frame`) decides the reach; `main-frame` gates navigations and hops and lets
+subresources through, because gating subresources breaks real pages — that was
+debated as a design question and the live test for it failed until the rule was
+stated correctly (main-frame = a *navigation into* a frame, not *any request from*
+the main frame).
 
 ## P2 — the hook has no automated tests
 
@@ -125,15 +155,17 @@ URL shorteners (already pointless — hops are re-checked).
   confusing "file not found". Validate, or fall through.
 - `whitelistPath()` ignores `PI_CODING_AGENT_DIR`, which other little-coder config
   resolution honours.
-- No IP-wildcard form: `192.168.40.*` is unsupported; exact IPs only. Fine for now,
-  but say so in the schema note.
+- No IP-wildcard form: `192.168.40.*` is unsupported; exact IPs only. Now stated
+  in the shipped template's `$pattern-limits` note rather than left to be found.
 - Static import `extra-tools → ../url-gate/gate.ts` makes `extra-tools` hard-depend
   on `url-gate` being present; fine in the shipped set, worth a comment or a
   dynamic import if anyone ever prunes extensions.
 
 ## Unrelated failures already on this machine (not url-gate)
 
-1. **3 tests need `npx playwright install chromium`** — missing browser binary.
+1. **3 tests needed `npx playwright install chromium`** — now installed, all three
+   pass. The new `url-gate-browser.test.ts` skips itself if the binary is absent,
+   so a machine without it reports a skip instead of a failure.
 2. **`llama-cpp-provider/swap-reprobe.test.ts` fails on a clean checkout too.** It
    stubs `fetch` to hand out `32768, 131072` in sequence and expects the *swap* to
    consume the second value, but it receives `32768` — i.e. something now makes one

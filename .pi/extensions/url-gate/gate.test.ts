@@ -14,6 +14,8 @@ import {
   isSessionAllowed,
   clearSessionAllowed,
   urlRefusalReason,
+  getBrowserGateMode,
+  browserRequestAllowed,
 } from "./gate.ts";
 
 describe("extractTargetUrl", () => {
@@ -227,5 +229,64 @@ describe("urlRefusalReason", () => {
   it("states the command/URL split for shell tools, because accept-all allows commands", () => {
     expect(urlRefusalReason("https://x.com", "bash", "ask")).toContain("NOT the shell command");
     expect(urlRefusalReason("https://x.com", "webfetch", "ask")).not.toContain("NOT the shell command");
+  });
+});
+
+describe("browser request gate", () => {
+  const savedGate = process.env.LITTLE_CODER_URL_GATE;
+  const savedBrowser = process.env.LITTLE_CODER_URL_GATE_BROWSER;
+  afterEach(() => {
+    if (savedGate === undefined) delete process.env.LITTLE_CODER_URL_GATE;
+    else process.env.LITTLE_CODER_URL_GATE = savedGate;
+    if (savedBrowser === undefined) delete process.env.LITTLE_CODER_URL_GATE_BROWSER;
+    else process.env.LITTLE_CODER_URL_GATE_BROWSER = savedBrowser;
+  });
+
+  it("defaults to main-frame; honours all and off; ignores junk values", () => {
+    delete process.env.LITTLE_CODER_URL_GATE;
+    delete process.env.LITTLE_CODER_URL_GATE_BROWSER;
+    expect(getBrowserGateMode()).toBe("main-frame");
+    process.env.LITTLE_CODER_URL_GATE_BROWSER = "all";
+    expect(getBrowserGateMode()).toBe("all");
+    process.env.LITTLE_CODER_URL_GATE_BROWSER = "off";
+    expect(getBrowserGateMode()).toBe("off");
+    process.env.LITTLE_CODER_URL_GATE_BROWSER = "maybe";
+    expect(getBrowserGateMode()).toBe("main-frame"); // an unknown value is no licence to stop gating
+  });
+
+  it("LITTLE_CODER_URL_GATE=off turns the browser half off too", () => {
+    process.env.LITTLE_CODER_URL_GATE = "off";
+    delete process.env.LITTLE_CODER_URL_GATE_BROWSER;
+    expect(getBrowserGateMode()).toBe("off");
+  });
+
+  it("main-frame gates navigations and waves subresources through", () => {
+    const p = ["example.com"];
+    expect(browserRequestAllowed("main-frame", "https://example.com/a", true, p)).toBe(true);
+    expect(browserRequestAllowed("main-frame", "https://evil.test/a", true, p)).toBe(false);
+    // An approved page's own assets are not judged, or every real site renders
+    // broken — this is the whole reason main-frame is the default.
+    expect(browserRequestAllowed("main-frame", "https://cdn.evil.test/a.png", false, p)).toBe(true);
+  });
+
+  it("all judges subresources too; off judges nothing", () => {
+    const p = ["example.com"];
+    expect(browserRequestAllowed("all", "https://cdn.evil.test/a.png", false, p)).toBe(false);
+    expect(browserRequestAllowed("all", "https://example.com/a.png", false, p)).toBe(true);
+    expect(browserRequestAllowed("off", "https://evil.test/a", true, [])).toBe(true);
+  });
+
+  it("a host approved this session passes the request gate", () => {
+    clearSessionAllowed();
+    rememberHost("https://research.test/x");
+    expect(browserRequestAllowed("main-frame", "https://research.test/y", true, [])).toBe(true);
+    clearSessionAllowed();
+    expect(browserRequestAllowed("main-frame", "https://research.test/y", true, [])).toBe(false);
+  });
+
+  it("path-pinned patterns mean the same thing in the browser as in the hook", () => {
+    const p = ["github.com/itayinbarr/little-coder"];
+    expect(browserRequestAllowed("main-frame", "https://github.com/itayinbarr/little-coder", true, p)).toBe(true);
+    expect(browserRequestAllowed("main-frame", "https://github.com/evil/repo", true, p)).toBe(false);
   });
 });

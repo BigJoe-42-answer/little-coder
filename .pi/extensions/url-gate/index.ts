@@ -21,6 +21,8 @@ import {
 //   ONE whitelist file: ${XDG_CONFIG_HOME:-~/.config}/little-coder/url-whitelist.json
 //   (LITTLE_CODER_URL_WHITELIST=/path is the only override)
 //   LITTLE_CODER_URL_GATE=ask|block|off   (default ask)
+//   LITTLE_CODER_URL_GATE_BROWSER=main-frame|all|off  (default main-frame;
+//   the browser's own request-level layer — see .pi/extensions/browser/)
 //
 // ask   : non-listed URL -> prompt the user; deny -> block, allow -> the host
 //         is remembered for the rest of the session.
@@ -30,7 +32,9 @@ import {
 // Covered surfaces: webfetch (input.url), websearch (its fixed DDG endpoint),
 // BrowserNavigate (input.url), pi's built-in browser tools if present,
 // webfetch's redirect hops (checked inside extra-tools via gate.isUrlAllowed),
-// and EVERY http(s) URL named inside a shell command.
+// every http(s) URL named inside a shell command, and — below the tool layer,
+// in the browser itself — the destinations the model never named: clicks,
+// form posts, meta/JS redirects, iframes, redirect hops, back-navigations.
 //
 // The shell case is the load-bearing one for this deployment. It runs with
 // LITTLE_CODER_PERMISSION_MODE=accept-all, so permission-gate lets every
@@ -44,9 +48,12 @@ import {
 //
 // Residual, stated rather than hidden: a script that makes its own HTTP calls
 // (python3 crawler.py), package-manager traffic whose URL the model never
-// typed, a fetcher's own redirect hops (curl -L), and in-page link clicks or
-// JS redirects inside an already-approved page. All of those need a network-
-// layer boundary (proxy/firewall), not a tool-layer one.
+// typed, and a shell fetcher's own redirect hops (curl -L). Those were never
+// visible at the tool layer and need a network-layer boundary (proxy/firewall).
+// In the browser, main-frame mode leaves subresources alone on purpose, and a
+// WebSocket to an off-list host is not a navigation, so it passes; `all` mode
+// closes the subresource half of that at the cost of breaking pages that need
+// off-list CSS/images/XHR.
 
 const BROWSER_URL_TOOLS = new Set(["BrowserNavigate", "browser_navigate", "navigate", "browser goto"]);
 

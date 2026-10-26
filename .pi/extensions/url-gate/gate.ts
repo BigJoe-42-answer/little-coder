@@ -17,9 +17,14 @@ import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/** Tools whose input carries a directly-requested URL. BrowserBack's URL is
- *  resolved by the browser extension from its history stack, so the hook in
- *  index.ts handles it separately. */
+/** Tools whose input carries a directly-requested URL.
+ *
+ *  BrowserBack is deliberately NOT here: its target is resolved by the browser
+ *  from its own history stack, so there is no URL in the tool input for a
+ *  tool_call hook to judge. Same for BrowserClick/BrowserType. Those
+ *  destinations are covered one layer down, by the request-level gate in
+ *  .pi/extensions/browser/request-gate.ts (see browserRequestAllowed below) —
+ *  which is also why this gate had to move below the tool-input layer at all. */
 export const URL_TOOLS: ReadonlySet<string> = new Set([
   "webfetch",
   "BrowserNavigate",
@@ -230,6 +235,23 @@ export function loadWhitelistIfChanged(current: WhitelistState | null): Whitelis
   return loadWhitelist(path);
 }
 
+/** The gate's own cached view of the whitelist, for callers that are not the
+ *  tool_call hook — the browser's request listener, and anything else that
+ *  needs "the patterns right now" without wanting to manage a WhitelistState.
+ *  Same ONE file and same mtime-based hot-reload as the hook, so a mid-session
+ *  edit reaches the browser and the hook at the same moment. Returns [] (fail
+ *  closed for the browser listener) when the file is missing or unreadable. */
+let cachedState: WhitelistState | null = null;
+
+export function currentWhitelistState(): WhitelistState {
+  cachedState = loadWhitelistIfChanged(cachedState);
+  return cachedState;
+}
+
+export function currentWhitelistPatterns(): string[] {
+  return currentWhitelistState().patterns;
+}
+
 export type UrlGateMode = "ask" | "block" | "off";
 
 /** Why an unlisted URL is being refused without a prompt. Distinct from the
@@ -243,6 +265,60 @@ export function getUrlGateMode(): UrlGateMode {
   const v = process.env.LITTLE_CODER_URL_GATE;
   if (v === "off" || v === "block") return v;
   return "ask";
+}
+
+// ── browser request gating ──────────────────────────────────────────────
+// The tool_call hook can only judge a URL the model NAMED. Inside the browser
+// most destinations are never named: a BrowserClick on a link, a JS or meta
+// redirect, a form submit, or a BrowserBack re-navigating a history entry all
+// pick the URL without one ever appearing in a tool input. That gap used to be
+// the whole story; the browser extension now installs a `page.on("request")`
+// listener (see .pi/extensions/browser/index.ts) and asks this function. The
+// decision lives HERE so hook, webfetch-hop-check and browser agree through
+// one module — the same reason extra-tools imports isUrlAllowed.
+//
+// LITTLE_CODER_URL_GATE_BROWSER:
+//   main-frame (default) — gate navigations into a frame (including an iframe's
+//                          own document, redirect hops, and back-navigations),
+//                          let subresources through.
+//   all                  — also gate subresources: kills trackers and ads, but
+//                          also kills the CSS/images/XHR a real site needs,
+//                          so some pages render broken or stick at
+//                          domcontentloaded. Choose it on purpose.
+//   off                  — no request-level gating; only the hook's named-URL
+//                          checks apply.
+// The request listener cannot prompt — the ask/block/no-UI decision already
+// happened at tool level for the URL the model named — so the ONLY question
+// here is "is this destination on the list (or a host the user approved this
+// session)". Off-list navigations abort; there is no in-browser retry loop,
+// and the refusal text stays short because the page, not the model, sees it.
+
+export type BrowserGateMode = "main-frame" | "all" | "off";
+
+export function getBrowserGateMode(): BrowserGateMode {
+  // LITTLE_CODER_URL_GATE=off turns the whole gate off, browser included:
+  // leaving the browser half on would be surprising, and the half that stayed
+  // on could not ask the user anything.
+  if (getUrlGateMode() === "off") return "off";
+  const v = process.env.LITTLE_CODER_URL_GATE_BROWSER;
+  if (v === "off" || v === "all") return v;
+  return "main-frame";
+}
+
+/* @param isNavigation — true when the request is the document request that
+ * replaces what the browser is showing (goto, link click, form post, meta/JS
+ * redirect, back-navigation, a redirect hop, an <iframe src>). In main-frame
+ * mode a subresource — image, CSS, XHR — is NOT gated: the user approved a
+ * page, not a host boundary around its assets. */
+export function browserRequestAllowed(
+  mode: BrowserGateMode,
+  url: string,
+  isNavigation: boolean,
+  patterns: readonly string[],
+): boolean {
+  if (mode === "off") return true;
+  if (mode === "main-frame" && !isNavigation) return true;
+  return isUrlAllowed(url, patterns) || isSessionAllowed(url);
 }
 
 // ── session-allowed hosts ("yes, allow it" answers from the user) ───────

@@ -1,9 +1,25 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { installRequestGate } from "./request-gate.ts";
 
 // Port of local/tools/browser.py. Playwright-powered Browser* tools with
 // per-session lazy Page launch, chunked Readability extract, history stack,
 // graceful degradation when Playwright isn't installed.
+//
+// URL-gate integration: ensureSession() calls installRequestGate() (see
+// ./request-gate.ts for why it is CDP Fetch and not page.route), which refuses
+// off-allowlist requests and decides through url-gate/gate.ts so the hook, the
+// webfetch hop-check and the browser cannot disagree. It covers the
+// destinations the tool_call hook CANNOT see because they never appear in a
+// tool input: a BrowserClick on an off-list link, JS/meta redirects, form
+// submits, redirect hops, iframes, and BrowserBack re-navigating a history
+// entry. Mode: LITTLE_CODER_URL_GATE_BROWSER=main-frame (default) | all | off.
+// main-frame gates navigations and their hops and lets subresources through
+// (pages stay usable); all also gates subresources, which kills trackers but
+// also breaks pages needing off-list CSS/images/XHR — choose it on purpose.
+// off disables request-level gating (and so does LITTLE_CODER_URL_GATE=off).
+// If the url-gate extension is absent the gate no-ops — the browser extension
+// never hard-depends on a sibling extension.
 //
 // To enable: `npm install playwright && npx playwright install chromium`.
 // Without those the tools register but return a clear error.
@@ -30,7 +46,7 @@ function fallbackPageText(): string {
   return doc.body ? doc.body.innerText : "";
 }
 
-interface BrowserSession {
+export interface BrowserSession {
   pw: any;
   browser: any;
   context: any;
@@ -38,6 +54,13 @@ interface BrowserSession {
   history: string[];
   extractCache: Map<string, string>;
   error: string;
+  /** Requests the URL gate aborted since the last tool call. Surfaced in the
+   *  tool result: a blocked link click leaves the page exactly where it was,
+   *  and "clicked. url=<unchanged>" otherwise reads as if it worked. */
+  blockedByGate: string[];
+  /** Which interception layer is in force: "cdp" (sees every redirect
+   *  hop) | "route" (Playwright fallback, initial URLs only) | "none". */
+  gateLayer?: string;
 }
 
 const sessions = new Map<string, BrowserSession>();
@@ -56,7 +79,7 @@ async function ensureSession(): Promise<BrowserSession> {
   if (!sess) {
     sess = {
       pw: null, browser: null, context: null, page: null,
-      history: [], extractCache: new Map(), error: "",
+      history: [], extractCache: new Map(), error: "", blockedByGate: [],
     };
     sessions.set(key, sess);
   }
@@ -68,13 +91,45 @@ async function ensureSession(): Promise<BrowserSession> {
     const context = await browser.newContext({
       userAgent: "Mozilla/5.0 (little-coder research agent)",
       viewport: { width: 1280, height: 900 },
+      // A page's own service worker can fetch on the page's behalf, and those
+      // requests are the ones page-level interception sees worst (Playwright
+      // documents exactly this blind spot for route(); CDP Fetch sees them no
+      // better). A research agent gains nothing from a site's service worker,
+      // so block them and the hole closes.
+      serviceWorkers: "block",
     });
     const page = await context.newPage();
     page.setDefaultTimeout(20_000);
+    // A popup is a NEW target the gate has not attached to, and attaching is a
+    // race the gate loses (verified: the popup's own request was already in
+    // flight before a CDP session could open). The model cannot read a popup
+    // either — there are no tab tools — so a popup is ungated network traffic
+    // for no benefit. Fold it back into the gated page instead: target=_blank
+    // becomes _self and window.open is a no-op, so the destination goes through
+    // this page's gate and the content lands where BrowserExtract can see it.
+    try {
+      await context.addInitScript(() => {
+        (window as any).open = () => null;
+        document.addEventListener(
+          "click",
+          (ev: any) => {
+            const a = ev.target?.closest?.("a[target=_blank]");
+            if (a) a.target = "_self";
+          },
+          true,
+        );
+      });
+    } catch {
+      // addInitScript failing only restores the old popup behaviour.
+    }
     sess.pw = playwright;
     sess.browser = browser;
     sess.context = context;
     sess.page = page;
+    // After the fields above: the gate opens a CDP session through
+    // sess.context, and installing it first silently fell back to the weaker
+    // page.route() layer — which the tests then passed for the wrong reason.
+    await installRequestGate(page, sess);
   } catch (e: any) {
     if (e?.code === "ERR_MODULE_NOT_FOUND" || /Cannot find module 'playwright'/.test(e?.message ?? "")) {
       sess.error = "Playwright is not installed. Run: npm install playwright && npx playwright install chromium";
@@ -83,6 +138,15 @@ async function ensureSession(): Promise<BrowserSession> {
     }
   }
   return sess;
+}
+
+
+/** Which request-level gate the live session has, or undefined if no session.
+ *  Exported because the CDP layer and the page.route() fallback enforce
+ *  different things — CDP also blocks redirect hops — and a silent downgrade
+ *  from one to the other would otherwise be invisible from outside. */
+export function browserGateLayer(sessionId?: string): string | undefined {
+  return sessions.get(sessionId ?? sessionKey())?.gateLayer;
 }
 
 export async function resetBrowserSession(sessionId?: string): Promise<void> {
@@ -100,6 +164,20 @@ function errorResult(text: string) {
 }
 function textResult(text: string) {
   return { content: [{ type: "text" as const, text }], details: {} };
+}
+
+/** Drain the gate's blocked-request log into a warning line for the model.
+ *  The gate cannot prompt from inside the browser (the ask already happened at
+ *  tool level for the URL the model named), so a silently-dropped navigation
+ *  is the one outcome the model must never be left to guess about. */
+function gateNote(sess: BrowserSession): string {
+  if (!sess.blockedByGate.length) return "";
+  const urls = sess.blockedByGate.splice(0).map((u) => `  blocked (not on the URL whitelist): ${u}`).join("\n");
+  return (
+    `\n${urls}\nThe page did NOT navigate there and cannot: the URL whitelist refused it. `
+    + `Do not retry the same link, an off-list mirror, or a cached copy — tell the user which host `
+    + `was refused and that they can add it to url-whitelist.json.`
+  );
 }
 
 export default function (pi: ExtensionAPI) {
@@ -131,7 +209,7 @@ export default function (pi: ExtensionAPI) {
         const title = await sess.page.title();
         return textResult(`[status=${status}] ${sess.page.url()}\ntitle: ${title}`);
       } catch (e: any) {
-        return errorResult(`Error navigating to ${u}: ${e?.message ?? e}`);
+        return errorResult(`Error navigating to ${u}: ${e?.message ?? e}${gateNote(sess)}`);
       }
     },
   });
@@ -163,7 +241,7 @@ export default function (pi: ExtensionAPI) {
         await sess.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
         sess.history.push(sess.page.url());
         sess.extractCache.clear();
-        return textResult(`clicked. url=${sess.page.url()}`);
+        return textResult(`clicked. url=${sess.page.url()}${gateNote(sess)}`);
       } catch (e: any) {
         return errorResult(`Error clicking: ${e?.message ?? e}`);
       }
@@ -194,7 +272,7 @@ export default function (pi: ExtensionAPI) {
           sess.history.push(sess.page.url());
           sess.extractCache.clear();
         }
-        return textResult(`typed ${t.length} chars into ${sel}${submit ? " + Enter" : ""}`);
+        return textResult(`typed ${t.length} chars into ${sel}${submit ? " + Enter" : ""}${gateNote(sess)}`);
       } catch (e: any) {
         return errorResult(`Error typing: ${e?.message ?? e}`);
       }
@@ -280,7 +358,7 @@ export default function (pi: ExtensionAPI) {
       try {
         await sess.page.goBack({ waitUntil: "domcontentloaded" });
         sess.extractCache.clear();
-        return textResult(`back. url=${sess.page.url()}`);
+        return textResult(`back. url=${sess.page.url()}${gateNote(sess)}`);
       } catch (e: any) {
         return errorResult(`Error going back: ${e?.message ?? e}`);
       }
