@@ -72,7 +72,7 @@ TypeScript is loaded directly — no build step. The bundled extensions in [`.pi
 |---|---|
 | Add a slash command | [`clear-command`](../.pi/extensions/clear-command), [`update-notice`](../.pi/extensions/update-notice) |
 | Add a tool | [`extra-tools`](../.pi/extensions/extra-tools), [`shell-session`](../.pi/extensions/shell-session) |
-| Block or rewrite a tool call | [`write-guard`](../.pi/extensions/write-guard), [`permission-gate`](../.pi/extensions/permission-gate) |
+| Block or rewrite a tool call | [`write-guard`](../.pi/extensions/write-guard), [`permission-gate`](../.pi/extensions/permission-gate), [`url-gate`](../.pi/extensions/url-gate) (URL allowlist + user prompt) |
 | Add per-turn context | [`skill-inject`](../.pi/extensions/skill-inject) — and read [`_shared/inject.ts`](../.pi/extensions/_shared/inject.ts) first |
 | Add a hotkey + panel | [`shortcuts-help`](../.pi/extensions/shortcuts-help), [`plan-mode`](../.pi/extensions/plan-mode) |
 | Add a model provider | [`llama-cpp-provider`](../.pi/extensions/llama-cpp-provider) |

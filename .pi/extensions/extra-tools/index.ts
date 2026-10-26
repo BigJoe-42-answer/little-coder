@@ -1,6 +1,34 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { globFiles, renderGlobOutcome } from "./glob.ts";
+import { isUrlAllowed, loadWhitelist, whitelistPath, isSessionAllowed } from "../url-gate/gate.ts";
+
+// webfetch follows redirects, so gating only the URL the model named would
+// leak: example.com/redirect can land the fetch on an off-allowlist host.
+// The fetch below therefore walks the redirect chain manually and re-checks
+// every hop through url-gate's matcher — the same module the tool_call hook
+// uses, so hook and tool can never disagree. If url-gate is absent (a pruned
+// deployment) the module would not resolve at all, which is why the import is
+// static. A MISSING whitelist file, by contrast, fails CLOSED: with one
+// canonical location (see gate.whitelistPath) an absent file is a
+// misconfiguration, and the redirect chain is precisely where an off-list host
+// would otherwise slip through unexamined.
+async function checkRedirectHop(nextUrl: string): Promise<string | null> {
+  if (isSessionAllowed(nextUrl)) return null;
+  const st = loadWhitelist(whitelistPath());
+  if (st.loadError) {
+    return (
+      `webfetch stopped at a redirect and the URL whitelist could not be read (${st.loadError}). ` +
+      `Create that file to use the URL allowlist. Do not work around this by re-requesting the URL elsewhere.`
+    );
+  }
+  if (isUrlAllowed(nextUrl, st.patterns)) return null;
+  return (
+    `webfetch stopped at a redirect: ${nextUrl} is not in the URL whitelist. ` +
+    `Do not re-request it through another tool. Tell the user which host the redirect targeted — ` +
+    `they can add it to url-whitelist.json or approve it when the url-gate prompt appears.`
+  );
+}
 
 // Ports of tools.py::_glob, _webfetch, _websearch. Pi ships its own grep/find,
 // so those are not re-registered here.
@@ -50,11 +78,32 @@ export default function (pi: ExtensionAPI) {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 30_000);
-        const res = await fetch(url, {
-          headers: { "User-Agent": "little-coder/0.1" },
-          redirect: "follow",
-          signal: controller.signal,
-        });
+        let res: Response | null = null;
+        let current = url;
+        for (let hop = 0; ; hop++) {
+          res = await fetch(current, {
+            headers: { "User-Agent": "little-coder/0.1" },
+            redirect: "manual",
+            signal: controller.signal,
+          });
+          if (res.status >= 300 && res.status < 400) {
+            const loc = res.headers.get("location");
+            if (!loc || hop >= 5) break;
+            const next = new URL(loc, current).toString();
+            const refusal = await checkRedirectHop(next);
+            if (refusal) {
+              clearTimeout(timer);
+              return {
+                content: [{ type: "text", text: `Error: ${refusal}` }],
+                details: {},
+                isError: true,
+              };
+            }
+            current = next;
+            continue;
+          }
+          break;
+        }
         clearTimeout(timer);
         if (!res.ok) {
           return {
