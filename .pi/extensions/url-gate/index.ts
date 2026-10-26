@@ -85,8 +85,12 @@ export default function (pi: ExtensionAPI) {
     for (const url of urls) {
       if (isUrlAllowed(url, state.patterns) || isSessionAllowed(url)) continue;
 
-      if (mode === "block" || !tryCtx(() => !!(ctx as any).hasUI, false)) {
-        return { block: true, reason: urlRefusalReason(url, toolName, "block") };
+      // Two different reasons for refusing silently, and they must not share a
+      // sentence: `block` is a mode the user chose, no-UI means the prompt was
+      // impossible (sub-coder, RPC/headless) and the gate failed closed.
+      const noUI = !tryCtx(() => !!(ctx as any).hasUI, false);
+      if (mode === "block" || noUI) {
+        return { block: true, reason: urlRefusalReason(url, toolName, mode === "block" ? "block" : "no-ui") };
       }
 
       // ask: put the decision in front of the user. The prompt text names the

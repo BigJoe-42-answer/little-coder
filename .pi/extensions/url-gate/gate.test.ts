@@ -209,4 +209,23 @@ describe("urlRefusalReason", () => {
     expect(r).toContain("url-whitelist.json");
     expect(r).toContain("Do NOT retry");
   });
+
+  it("says asking was impossible only when asking was impossible", () => {
+    // The bug this pins: a sub-coder (no UI) received the block-mode sentence
+    // and reported "This session runs in LITTLE_CODER_URL_GATE=block mode" — a
+    // setting the user never set — so the model went looking for a knob that
+    // does not exist instead of reporting that nobody could be asked.
+    const noUi = urlRefusalReason("https://x.com", "webfetch", "no-ui");
+    expect(noUi).not.toContain("LITTLE_CODER_URL_GATE");
+    expect(noUi).toContain("no interface to ask the user");
+
+    const blocked = urlRefusalReason("https://x.com", "webfetch", "block");
+    expect(blocked).toContain("LITTLE_CODER_URL_GATE=block");
+    expect(blocked).not.toContain("no interface to ask the user");
+  });
+
+  it("states the command/URL split for shell tools, because accept-all allows commands", () => {
+    expect(urlRefusalReason("https://x.com", "bash", "ask")).toContain("NOT the shell command");
+    expect(urlRefusalReason("https://x.com", "webfetch", "ask")).not.toContain("NOT the shell command");
+  });
 });

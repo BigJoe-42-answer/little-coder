@@ -232,6 +232,13 @@ export function loadWhitelistIfChanged(current: WhitelistState | null): Whitelis
 
 export type UrlGateMode = "ask" | "block" | "off";
 
+/** Why an unlisted URL is being refused without a prompt. Distinct from the
+ *  mode because the two need different sentences: a `block` session was
+ *  configured that way, a no-UI session (sub-coder, RPC/headless) could not ask
+ *  at all — and blaming the env var for the latter sends the model hunting for a
+ *  setting the user never set. */
+export type RefusalCause = "ask" | "block" | "no-ui";
+
 export function getUrlGateMode(): UrlGateMode {
   const v = process.env.LITTLE_CODER_URL_GATE;
   if (v === "off" || v === "block") return v;
@@ -264,10 +271,8 @@ export function sessionAllowedHostList(): string[] {
   return [...sessionAllowedHosts];
 }
 
-/** Refusal text for a URL the user denied (or a no-UI session). Written in the
- *  permission-gate's style: name the remedy, do not send the model hunting for
- *  a route around the boundary the user just declined. */
-export function urlRefusalReason(url: string, toolName: string, mode: UrlGateMode): string {
+/** Refusal text for a URL the user denied, or that could not be asked about. */
+export function urlRefusalReason(url: string, toolName: string, cause: RefusalCause): string {
   // Under LITTLE_CODER_PERMISSION_MODE=accept-all the model has been told the
   // shell is free. A refusal on a SHELL command therefore reads as a
   // contradiction unless the message states the split — the command is allowed,
@@ -283,9 +288,11 @@ export function urlRefusalReason(url: string, toolName: string, mode: UrlGateMod
     `Do NOT retry the same page through another tool, another host mirror, or webfetch of a cached copy — ` +
     `that defeats a limit the user set on purpose and wastes your budget.\n` +
     `Pick a source that IS whitelisted, or tell the user this URL was declined and that they can add the host ` +
-    `to url-whitelist.json (or approve it when asked). Then continue with the rest of the task.` +
-    (mode === "block"
-      ? `\nThis session runs in LITTLE_CODER_URL_GATE=block mode, so non-whitelisted URLs are refused without asking.`
-      : "")
+    `to url-whitelist.json. Then continue with the rest of the task.` +
+    (cause === "block"
+      ? `\nThis session runs with LITTLE_CODER_URL_GATE=block, so non-whitelisted URLs are refused without asking.`
+      : cause === "no-ui"
+        ? `\nNothing was refused because of a setting: this session has no interface to ask the user in (a sub-coder, or an RPC/headless run), so the prompt could not be shown and the URL was refused instead. Only adding the host to url-whitelist.json changes that.`
+        : "")
   );
 }
