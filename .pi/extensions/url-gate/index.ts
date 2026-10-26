@@ -16,6 +16,8 @@ import {
 // blocks with an instructive reason, plus ctx.ui.confirm to ask the user when
 // a URL is not on the allowlist.
 //
+// Outstanding work, known gaps, and the do-not-add host list: docs/url-gate-todo.md.
+//
 //   ONE whitelist file: ${XDG_CONFIG_HOME:-~/.config}/little-coder/url-whitelist.json
 //   (LITTLE_CODER_URL_WHITELIST=/path is the only override)
 //   LITTLE_CODER_URL_GATE=ask|block|off   (default ask)
