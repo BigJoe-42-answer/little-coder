@@ -81,6 +81,7 @@ Two things worth knowing before you write one:
 
 - **Don't rewrite the system prompt per turn.** It's the first thing in every request, so changing it invalidates the whole cached prefix and your server reprocesses the entire conversation. Return a `message` from `before_agent_start` instead — `_shared/inject.ts` wraps this. (This was [#73](https://github.com/itayinbarr/little-coder/issues/73).)
 - **Cap every rendered line to the terminal width.** pi-tui throws on overflow; `_shared/width.ts` has `truncateLineToWidth`.
+- **A gate's policy does not live inside the package.** `url-gate` reads exactly one file — `${XDG_CONFIG_HOME:-~/.config}/little-coder/url-whitelist.json` — because a security control resolved against the cwd, or found by searching several locations, quietly stops applying (a cwd lookup means "no list in this directory", and several candidates means several files disagreeing with no visible answer). Everything under `/usr/lib/node_modules` is erased by the next `npm i -g little-coder@latest`, so the copy under version control is [`config/url-whitelist.json`](../config/url-whitelist.json), kept byte-identical to the live file; [`scripts/url-gate-setup.sh`](../scripts/url-gate-setup.sh) installs the extension and reports any drift between the two.
 
 ## Pointing at extensions somewhere else
 

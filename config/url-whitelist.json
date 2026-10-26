@@ -1,0 +1,23 @@
+{
+  "$schema-note": "THE URL allowlist - this is the only whitelist file. Location: ~/.config/little-coder/url-whitelist.json (override with LITTLE_CODER_URL_WHITELIST=/path; there is no cwd or multi-path lookup). Pattern forms: 'example.com' (exact host, any path), '*.example.com' (apex + any subdomain), 'example.com/docs' (host + path prefix), or a full URL (scheme pinned). Covers webfetch, websearch, browser tools, webfetch redirect hops, and any http(s) URL named inside a shell command. Anything not matched asks you (LITTLE_CODER_URL_GATE=ask|block|off).",
+  "$add-a-host": "append the hostname to the array below, e.g. \"reddit.com\", \"*.reddit.com\"; the file is re-read on change, no restart needed",
+  "allowed": [
+    "duckduckgo.com",
+    "*.duckduckgo.com",
+    "html.duckduckgo.com",
+    "wikipedia.org",
+    "*.wikipedia.org",
+    "github.com",
+    "raw.githubusercontent.com/itayinbarr/little-coder",
+    "docs.python.org",
+    "nodejs.org",
+    "docs.microsoft.com",
+    "developer.mozilla.org",
+    "stackoverflow.com",
+    "man7.org",
+    "*.arxiv.org",
+    "*.freecad.org",
+    "registry.npmjs.org",
+    "pypi.org"
+  ]
+}
