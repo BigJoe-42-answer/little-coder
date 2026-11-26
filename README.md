@@ -7,6 +7,51 @@
 
 The research story behind all this — why scaffold–model fit matters, how a 9.7 B Qwen beat frontier entries on Aider Polyglot, and what the load-bearing mechanisms actually do — is written up on Substack: **[*Honey, I Shrunk the Coding Agent*](https://open.substack.com/pub/itayinbarr/p/honey-i-shrunk-the-coding-agent)**. Start there if you want the "why"; stay here for the "how".
 
+## This fork (private build — read before updating)
+
+This checkout is a **private fork of `itayinbarr/little-coder` (v1.20.0 base)** and is
+**not published to npm**. Everything below is why that matters operationally:
+
+- **Never `npm install -g little-coder` over this build** — it would clobber the fork.
+  The update flow (`--update`, the launch prompt, and `/update`) therefore never
+  targets the `little-coder` package: it polls npm for a newer **pi**
+  (`@earendil-works/pi-coding-agent`) and installs it in place under this install
+  root. Full npm transcript of every attempt: `~/.cache/little-coder/update.log`
+  (mode 600, last 20 transcripts kept).
+- **pi is pinned exactly** (`1.6.1`, not a caret range) because
+  [`scripts/patch-pi.mjs`](scripts/patch-pi.mjs) matches literal source text in pi's
+  dist *and* in its hashed bundle chunks; a silent minor bump can no-op the
+  abort-marker and edit-repair patches. Bump procedure:
+  1. change the pin in `package.json`;
+  2. `npx vitest run scripts/patch-pi.test.mjs` — it fails loudly when anchors no
+     longer match (this already caught one silent no-op on pi 1.5.2);
+  3. refresh the `find`/`replace` anchors in `scripts/patch-pi.mjs` if it fails;
+  4. regenerate the lock: `rm package-lock.json && npm install --ignore-scripts && npx playwright install chromium`
+     (a plain `npm install` re-resolution currently crashes npm's arborist via the
+     `file:./vendor/node-domexception` override — the same crash the updater's
+     `--no-package-lock` works around);
+  5. verify the markers landed: `grep -c "little-coder patch" node_modules/@earendil-works/pi-coding-agent/dist/bundle/chunks/chunk-*.js`.
+  Note the in-place auto-update moves `package.json` but not the lock
+  (`--no-package-lock`), so step 4 is also the post-update refresh.
+- **Launch topology (the one in use)**: Desktop entries →
+  `start-little-coder.sh` (this repo) → prepends `launch/` to `PATH` →
+  `/home/fred/little-coder-transport/start_little-coder.sh` (env setup: provider
+  key, thinking budget, sub-coder concurrency, model auto-sync, llama fallback) →
+  `command -v little-coder` resolves the **`launch/little-coder` shim** →
+  `bin/little-coder.mjs` from this checkout. Smoke check:
+  `PATH=$PWD/launch:$PATH command -v little-coder` must print the shim, not
+  `/usr/bin/little-coder`.
+- **The old global install** (`/usr/lib/node_modules/little-coder`) is stale and
+  unused by the path above — its update check targets the little-coder package and
+  it bundles an unpatched pi 1.5.2. It should be removed
+  (`sudo npm uninstall -g little-coder`) or clearly deprecated; until then, never
+  launch it by name from a bare shell without the `launch/` shim on `PATH`.
+- **url-gate is not a network sandbox.** The transport launcher runs with
+  `LITTLE_CODER_PERMISSION_MODE=accept-all`, and `url-gate` compensates at the tool
+  layer only. Known bypasses (scripts making their own HTTP calls, `curl -L` hops)
+  are listed in [`docs/url-gate-todo.md`](docs/url-gate-todo.md); closing them
+  needs a network-layer boundary, which this fork does not provide.
+
 ## How it relates to pi
 
 [pi](https://pi.dev) is the minimal substrate — agent loop, multi-provider API, TUI, session tree, compaction, extension model. Four built-in tools (read / write / edit / bash) and a ~1000-token system prompt.
@@ -475,9 +520,9 @@ This is where the scaffolding work now compounds: knowledge injection/selection,
 
 ## Troubleshooting
 
-**`--update` flag** — pass `little-coder --update` to force an immediate version check, bypassing the 12-hour cache. Useful right after a release. The flag is stripped before pi sees argv so it won't produce an "Unknown option" error.
+**`--update` flag** — pass `little-coder --update` to force an immediate check for a newer bundled **pi** runtime, bypassing the 12-hour cache. Useful right after a pi release. The flag is stripped before pi sees argv so it won't produce an "Unknown option" error.
 
-**Auto-update fails on Windows (≤ v1.9.5): `npm exit null`** — the updater in those versions can't locate `npm.cmd`. Fixed in v1.9.6, but the broken updater can't deliver its own fix — run `npm install -g little-coder@latest` once to get there, then auto-update works normally.
+**Updates never mention a new little-coder** — intentional: this build is not published as `little-coder`, so the update check never targets the little-coder package (updating it would clobber the custom install). It polls npm for a newer **pi** (`@earendil-works/pi-coding-agent`) and installs it in place under the little-coder install root (`npm install --ignore-scripts --no-package-lock --prefix <install-root> @earendil-works/pi-coding-agent@<latest>`; the full npm transcript of every attempt is appended to `~/.cache/little-coder/update.log`).
 
 **`little-coder: command not found`** — npm's global bin directory isn't on your PATH. Run `npm config get prefix` to see where it installed; add `<prefix>/bin` to your PATH. Or reinstall with `sudo` if your prefix needs root.
 
@@ -493,9 +538,9 @@ This is where the scaffolding work now compounds: knowledge injection/selection,
 
 **No API key env var warning** — pi expects *some* key even for local providers. Export `LLAMACPP_API_KEY=noop` (or `OLLAMA_API_KEY=noop`) before launching.
 
-**Update prompt hangs on launch / want it in the UI instead** — when a new version is published the launcher asks `Update now? [Y/n]` before starting. As of v1.9.12 it **auto-continues without updating after 10 s** so an unattended terminal is never blocked; tune with `LITTLE_CODER_UPDATE_PROMPT_TIMEOUT=<seconds>` (`0`/`off` waits forever). If you dismiss or time out of the prompt, little-coder still shows a one-line "update available" notice inside the TUI, and you can run **`/update`** any time to install the latest and end the session for a clean restart (issue [#64](https://github.com/itayinbarr/little-coder/issues/64)). As of v1.11.0, answering `Y` at the launcher prompt **auto-relaunches into the new version** with your original arguments (issue [#66](https://github.com/itayinbarr/little-coder/issues/66)) — no manual re-run — printing `Relaunching little-coder…` (with a manual-relaunch fallback if the re-exec can't start). The in-app `/update` still ends the session for a manual restart, since it runs inside the pi child process where an in-place re-exec isn't safe.
+**Update prompt hangs on launch / want it in the UI instead** — when a new version of the bundled pi runtime is published the launcher asks `Update now? [Y/n]` before starting. As of v1.9.12 it **auto-continues without updating after 10 s** so an unattended terminal is never blocked; tune with `LITTLE_CODER_UPDATE_PROMPT_TIMEOUT=<seconds>` (`0`/`off` waits forever). If you dismiss or time out of the prompt, little-coder still shows a one-line "update available" notice inside the TUI, and you can run **`/update`** any time to install the latest pi in place and end the session for a clean restart (issue [#64](https://github.com/itayinbarr/little-coder/issues/64)). As of v1.11.0, answering `Y` at the launcher prompt **auto-relaunches with your original arguments** (issue [#66](https://github.com/itayinbarr/little-coder/issues/66)) — no manual re-run — printing `Relaunching little-coder…` (with a manual-relaunch fallback if the re-exec can't start). The in-app `/update` still ends the session for a manual restart, since it runs inside the pi child process where an in-place re-exec isn't safe.
 
-**No pi "Update Available" banner** — that's intentional. little-coder defaults `PI_SKIP_VERSION_CHECK=1` so the bundled pi runtime doesn't nag about updating itself; little-coder pins pi to a known-good version per release. If you actually want the banner back, `export PI_SKIP_VERSION_CHECK=0` before launching.
+**No pi "Update Available" banner** — that's intentional. little-coder defaults `PI_SKIP_VERSION_CHECK=1` so the bundled pi runtime doesn't nag about updating itself through pi's own check; the little-coder launcher runs its own pi update check instead (see above). If you actually want pi's banner back, `export PI_SKIP_VERSION_CHECK=0` before launching.
 
 **Running little-coder from Zed's agent panel** — there's no built-in ACP server, but a community `pi-acp` bridge works well; see [docs/zed-acp.md](docs/zed-acp.md) for the full setup (issue [#58](https://github.com/itayinbarr/little-coder/issues/58)).
 
