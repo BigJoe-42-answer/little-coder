@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { applyPiPatches, resolvePiRoot, PATCHES, repairJsonControlChars } from "./patch-pi.mjs";
+import { applyPiPatches, resolvePiRoot, patchFilesFor, PATCHES, repairJsonControlChars } from "./patch-pi.mjs";
 
 // These tests are the upgrade safety-net for our pi source patches.
 //
@@ -21,35 +21,44 @@ describe("pi runtime patches", () => {
   it("applies cleanly and is idempotent", () => {
     // Idempotent: safe to run repeatedly (every launch + tests). There is no
     // postinstall any more — little-coder ships no npm install scripts (#75).
-    applyPiPatches();
-    applyPiPatches();
     const piRoot = resolvePiRoot();
-    for (const p of PATCHES) {
-      const file = join(piRoot, p.rel);
-      if (!existsSync(file)) continue;
-      const src = readFileSync(file, "utf8");
+    // A patch is "needed" when some file it targets carries either the
+    // original block (unpatched) or our marker (patched by an earlier run).
+    // Glob patches (bundle chunks) match many files but only one carries the
+    // code, hence the some() over files.
+    const needed = PATCHES.map((p) =>
+      patchFilesFor(p, piRoot).some((f) => {
+        const src = readFileSync(f, "utf8");
+        return src.includes(p.find) || src.includes(p.applied);
+      }),
+    );
+    applyPiPatches();
+    applyPiPatches();
+    PATCHES.forEach((p, i) => {
+      if (!needed[i]) return; // pi no longer ships this block at all
+      const files = patchFilesFor(p, piRoot);
       expect(
-        src.includes(p.applied),
-        `expected patch marker in ${p.rel} after applying`,
+        files.some((f) => readFileSync(f, "utf8").includes(p.applied)),
+        `expected patch marker somewhere in ${p.rel} after applying`,
       ).toBe(true);
-    }
+    });
   });
 
   it("leaves no un-suppressed original block (loud signal to refresh on pi upgrade)", () => {
     applyPiPatches();
     const piRoot = resolvePiRoot();
     for (const p of PATCHES) {
-      const file = join(piRoot, p.rel);
-      if (!existsSync(file)) continue;
-      const src = readFileSync(file, "utf8");
-      // After applying, the original block must be gone — either we replaced it,
-      // or this pi version no longer ships it. If pi changed *around* the block
-      // so our patch silently no-op'd, the original is still present → fail.
-      expect(
-        src.includes(p.find),
-        `pi patch for "${p.rel}" no longer applies — pi likely changed. ` +
-          `Refresh the find/replace in scripts/patch-pi.mjs for the new pi version.`,
-      ).toBe(false);
+      for (const file of patchFilesFor(p, piRoot)) {
+        const src = readFileSync(file, "utf8");
+        // After applying, the original block must be gone — either we replaced it,
+        // or this pi version no longer ships it. If pi changed *around* the block
+        // so our patch silently no-op'd, the original is still present → fail.
+        expect(
+          src.includes(p.find),
+          `pi patch for "${p.rel}" no longer applies — pi likely changed. ` +
+            `Refresh the find/replace in scripts/patch-pi.mjs for the new pi version.`,
+        ).toBe(false);
+      }
     }
   });
 
@@ -61,6 +70,13 @@ describe("pi runtime patches", () => {
     // The literal only survives inside our explanatory comment, never as the
     // rendered fallback (`: "Operation aborted";`).
     expect(src.includes(': "Operation aborted";')).toBe(false);
+    // Same check for the minified bundle copy the bin actually runs. Note the
+    // literal also appears in unrelated tool-result strings, so anchor on the
+    // assistant-message fallback shape specifically.
+    for (const f of patchFilesFor(PATCHES[1], piRoot)) {
+      const bsrc = readFileSync(f, "utf8");
+      expect(bsrc.includes(':"Operation aborted";this.contentContainer')).toBe(false);
+    }
   });
 });
 

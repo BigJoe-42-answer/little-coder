@@ -27,8 +27,8 @@
 //      the edit tool, so a multi-line replacement from a small local model is
 //      recoverable instead of deadlocking the run (issue #127).
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -157,49 +157,82 @@ function editRepairCatch(indent) {
   );
 }
 
-// pi ships two copies of the edit tool: the coding agent's own (used by the
-// TUI and by `-p`) and pi-agent-core's harness copy (the path brlucasdx
-// quoted). They differ only in formatting, so each gets its own exact `find`.
+// pi 1.5.x ships the edit tool twice: the plain dist copy (imported by tests
+// and any non-bundled entry point) and a minified copy inside the esbuild
+// bundle under dist/bundle/chunks/. The package's bin — what the launcher
+// actually spawns — is dist/bundle/cli.js, so the BUNDLE copies are the ones
+// that matter at runtime; the plain copies keep the layout pre-1.5 installs
+// used. Chunk file names carry a build hash, so bundle entries use a `*`
+// glob in `rel` (see patchFilesFor). The old pi-agent-core nested copy is
+// gone in 1.5.x (its code is folded into the same bundle chunk).
 const EDIT_REPAIR_PATCHES = [
   {
     rel: "dist/core/tools/edit.js",
     applied: EDIT_REPAIR_APPLIED,
     find:
-      "            if (Array.isArray(parsed))\n" +
+      "            if (Array.isArray(parsed)) {\n" +
       "                args.edits = parsed;\n" +
+      "            }\n" +
+      "            else if (isSingleEditInput(parsed)) {\n" +
+      "                args.edits = [parsed];\n" +
+      "            }\n" +
       "        }\n" +
-      "        catch { }\n" +
-      "    }\n" +
-      "    const legacy = args;",
+      "        catch { }",
     replace:
-      "            if (Array.isArray(parsed))\n" +
+      "            if (Array.isArray(parsed)) {\n" +
       "                args.edits = parsed;\n" +
+      "            }\n" +
+      "            else if (isSingleEditInput(parsed)) {\n" +
+      "                args.edits = [parsed];\n" +
+      "            }\n" +
       "        }\n" +
-      "        " + editRepairCatch(8) + "\n" +
-      "    }\n" +
-      "    const legacy = args;",
+      "        " + editRepairCatch(8),
   },
   {
-    rel: "node_modules/@earendil-works/pi-agent-core/dist/harness/tools/edit.js",
+    rel: "dist/bundle/chunks/chunk-*.js",
     applied: EDIT_REPAIR_APPLIED,
     find:
-      "            if (Array.isArray(parsed))\n" +
-      "                args.edits = parsed;\n" +
-      "        }\n" +
-      "        catch { }\n" +
-      "    }\n" +
-      "    const legacy = args;",
+      "Array.isArray(parsed)?args.edits=parsed:isSingleEditInput(parsed)&&(args.edits=[parsed])}catch{}",
     replace:
-      "            if (Array.isArray(parsed))\n" +
-      "                args.edits = parsed;\n" +
-      "        }\n" +
-      "        " + editRepairCatch(8) + "\n" +
-      "    }\n" +
-      "    const legacy = args;",
+      "Array.isArray(parsed)?args.edits=parsed:isSingleEditInput(parsed)&&(args.edits=[parsed])}" +
+      `catch{/* ${EDIT_REPAIR_APPLIED} (issue #127). */\n` +
+      "try{const repair=" + String(repairJsonControlChars) + ";\n" +
+      "const repaired=JSON.parse(repair(args.edits));if(Array.isArray(repaired))args.edits=repaired}catch{}}",
   },
 ];
 
-export const PATCHES = [ABORT_MARKER_PATCH, ...EDIT_REPAIR_PATCHES];
+// Same suppression, minified copy inside the bundle chunk the bin actually runs.
+const BUNDLE_ABORT_MARKER_PATCH = {
+  rel: "dist/bundle/chunks/chunk-*.js",
+  applied: ABORT_MARKER_PATCH.applied,
+  find:
+    'if(message.stopReason==="aborted"){let abortMessage=message.errorMessage&&message.errorMessage!=="Request was aborted"?message.errorMessage:"Operation aborted";this.contentContainer.addChild(new Spacer(1)),this.contentContainer.addChild(new Text(theme.fg("error",abortMessage),this.outputPad,0))}',
+  replace:
+    'if(message.stopReason==="aborted"){/* ' + ABORT_MARKER_PATCH.applied + " */" +
+    'let abortMessage=message.errorMessage&&message.errorMessage!=="Request was aborted"?message.errorMessage:null;abortMessage&&(this.contentContainer.addChild(new Spacer(1)),this.contentContainer.addChild(new Text(theme.fg("error",abortMessage),this.outputPad,0)))}',
+};
+
+export const PATCHES = [ABORT_MARKER_PATCH, BUNDLE_ABORT_MARKER_PATCH, ...EDIT_REPAIR_PATCHES];
+
+/**
+ * Resolve a patch's `rel` to the files it exists on. Plain rels match one
+ * file; rels containing `*` glob one directory level (bundle chunk names
+ * carry a per-build hash). Returns only files that exist.
+ */
+export function patchFilesFor(p, piRoot) {
+  const abs = join(piRoot, p.rel);
+  if (!p.rel.includes("*")) return existsSync(abs) ? [abs] : [];
+  const dir = dirname(abs);
+  if (!existsSync(dir)) return [];
+  const rx = new RegExp(
+    "^" +
+      basename(p.rel).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") +
+      "$",
+  );
+  return readdirSync(dir)
+    .filter((f) => rx.test(f))
+    .map((f) => join(dir, f));
+}
 
 export function resolvePiRoot(piRootOverride) {
   if (piRootOverride && existsSync(join(piRootOverride, "package.json"))) {
@@ -233,15 +266,15 @@ export function applyPiPatches(piRootOverride) {
   const piRoot = resolvePiRoot(piRootOverride);
   if (!piRoot) return;
   for (const p of PATCHES) {
-    try {
-      const file = join(piRoot, p.rel);
-      if (!existsSync(file)) continue;
-      const src = readFileSync(file, "utf8");
-      if (src.includes(p.applied)) continue; // already patched
-      if (!src.includes(p.find)) continue; // pi changed — skip silently
-      writeFileSync(file, src.replace(p.find, p.replace));
-    } catch {
-      // best-effort: never break install or launch
+    for (const file of patchFilesFor(p, piRoot)) {
+      try {
+        const src = readFileSync(file, "utf8");
+        if (src.includes(p.applied)) continue; // already patched
+        if (!src.includes(p.find)) continue; // pi changed — skip silently
+        writeFileSync(file, src.replace(p.find, p.replace));
+      } catch {
+        // best-effort: never break install or launch
+      }
     }
   }
 }
