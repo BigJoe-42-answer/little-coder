@@ -16,6 +16,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { websearchEndpointUrl } from "../extra-tools/search.ts";
 
 /** Tools whose input carries a directly-requested URL.
  *
@@ -32,13 +33,25 @@ export const URL_TOOLS: ReadonlySet<string> = new Set([
 
 /** Tools that reach the network but do not name a URL in their input. The
  *  fixed endpoint each one hits is gated under that host, so a deployment that
- *  does not want search at all simply leaves duckduckgo.com off the list. */
-export const FIXED_ENDPOINTS: Readonly<Record<string, string>> = {
-  websearch: "https://html.duckduckgo.com/html/",
-};
+ *  does not want search at all simply leaves duckduckgo.com off the list.
+ *
+ *  websearch is deliberately NOT in this map: its endpoint depends on
+ *  LITTLE_CODER_WEB_PROVIDER (+ SEARXNG_URL), and a hardcoded DDG entry would
+ *  gate a searxng search against a host it never dials — the exact "gate and
+ *  tool disagree" hole this branch exists to close. extractTargetUrl resolves
+ *  it through the SAME search.ts the tool uses (one source of truth). */
+export const FIXED_ENDPOINTS: Readonly<Record<string, string>> = {};
 
 /** The URL a tool call targets, or null when the tool carries none. */
 export function extractTargetUrl(toolName: string, input: any): string | null {
+  if (typeof toolName === "string" && toolName === "websearch") {
+    // Provider-resolved, never hardcoded. When the provider config itself is
+    // broken (unknown value, or searxng without a usable SEARXNG_URL) this
+    // returns a fail-closed message string that is not a valid URL: the hook
+    // then refuses rather than letting the call through ungated, and the
+    // message names the variable and url-whitelist.json.
+    return websearchEndpointUrl();
+  }
   if (typeof toolName === "string" && FIXED_ENDPOINTS[toolName]) {
     return FIXED_ENDPOINTS[toolName];
   }

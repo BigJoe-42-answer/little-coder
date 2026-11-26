@@ -34,6 +34,61 @@ describe("extractTargetUrl", () => {
   });
 });
 
+describe("websearch endpoint follows the provider (§2.4)", () => {
+  const savedProvider = process.env.LITTLE_CODER_WEB_PROVIDER;
+  const savedSearxng = process.env.SEARXNG_URL;
+  afterEach(() => {
+    if (savedProvider === undefined) delete process.env.LITTLE_CODER_WEB_PROVIDER;
+    else process.env.LITTLE_CODER_WEB_PROVIDER = savedProvider;
+    if (savedSearxng === undefined) delete process.env.SEARXNG_URL;
+    else process.env.SEARXNG_URL = savedSearxng;
+  });
+
+  it("default provider still gates the DDG endpoint — the pair is never inconsistent", () => {
+    delete process.env.LITTLE_CODER_WEB_PROVIDER;
+    delete process.env.SEARXNG_URL;
+    expect(extractTargetUrl("websearch", { query: "anything" })).toBe("https://html.duckduckgo.com/html/");
+  });
+
+  it("provider=searxng gates the configured instance's /search, not DDG", () => {
+    process.env.LITTLE_CODER_WEB_PROVIDER = "searxng";
+    process.env.SEARXNG_URL = "http://127.0.0.1:8888";
+    expect(extractTargetUrl("websearch", { query: "anything" })).toBe("http://127.0.0.1:8888/search");
+  });
+
+  it("an off-whitelist SEARXNG_URL host is refused with the host named", () => {
+    process.env.LITTLE_CODER_WEB_PROVIDER = "searxng";
+    process.env.SEARXNG_URL = "http://evil.example:8888";
+    const url = extractTargetUrl("websearch", { query: "anything" })!;
+    expect(isUrlAllowed(url, ["127.0.0.1:8888", "duckduckgo.com"])).toBe(false);
+    expect(urlRefusalReason(url, "websearch", "block")).toContain("evil.example:8888");
+  });
+
+  it("an on-whitelist SEARXNG_URL host passes the gate", () => {
+    process.env.LITTLE_CODER_WEB_PROVIDER = "searxng";
+    process.env.SEARXNG_URL = "http://127.0.0.1:8888";
+    const url = extractTargetUrl("websearch", { query: "anything" })!;
+    expect(isUrlAllowed(url, ["127.0.0.1:8888"])).toBe(true);
+  });
+
+  it("provider=searxng without SEARXNG_URL fails CLOSED, naming the variable", () => {
+    process.env.LITTLE_CODER_WEB_PROVIDER = "searxng";
+    delete process.env.SEARXNG_URL;
+    const url = extractTargetUrl("websearch", { query: "anything" })!;
+    // Not a valid URL on purpose: it can never match a whitelist pattern, so
+    // the hook refuses instead of letting an unresolvable endpoint through.
+    expect(url).toContain("SEARXNG_URL is not set");
+    expect(isUrlAllowed(url, ["127.0.0.1:8888"])).toBe(false);
+  });
+
+  it("an unknown provider value fails CLOSED, naming the variable and the value", () => {
+    process.env.LITTLE_CODER_WEB_PROVIDER = "parallel";
+    const url = extractTargetUrl("websearch", { query: "anything" })!;
+    expect(url).toContain('LITTLE_CODER_WEB_PROVIDER="parallel"');
+    expect(isUrlAllowed(url, ["duckduckgo.com"])).toBe(false);
+  });
+});
+
 describe("normalizeUrl", () => {
   it("lowercases host, drops default ports and fragments", () => {
     expect(normalizeUrl("https://X.com:443/a#frag")).toEqual({ host: "x.com", path: "/a", scheme: "https" });

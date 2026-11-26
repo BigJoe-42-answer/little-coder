@@ -29,8 +29,10 @@ import {
 // block : non-listed URL -> blocked outright (headless/RPC default when no UI).
 // off   : no gate.
 //
-// Covered surfaces: webfetch (input.url), websearch (its fixed DDG endpoint),
-// BrowserNavigate (input.url), pi's built-in browser tools if present,
+// Covered surfaces: webfetch (input.url), websearch (the endpoint its
+// configured provider actually dials — DDG by default, SEARXNG_URL when
+// LITTLE_CODER_WEB_PROVIDER=searxng; resolved by the same search.ts the tool
+// uses), BrowserNavigate (input.url), pi's built-in browser tools if present,
 // webfetch's redirect hops (checked inside extra-tools via gate.isUrlAllowed),
 // every http(s) URL named inside a shell command, and — below the tool layer,
 // in the browser itself — the destinations the model never named: clicks,
