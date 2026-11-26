@@ -1,10 +1,58 @@
 # Plan: an open-source equivalent of upstream PR #139 (better web search + extraction), zero new dependencies
 
-**Status: plan only — nothing implemented.** For a future session. Ground rules
-taken from the request: **minimal dependencies** (target: **zero new npm
-deps**, lockfile untouched), **open source or new code only** (no proprietary
-search SaaS), and it must fit this fork's existing web posture (url-gate
-allowlist, `--ignore-scripts`, LAN-first servers).
+**Status: plan only — nothing implemented.** For a future session (start at
+§0). Ground rules taken from the request: **minimal dependencies** (target:
+**zero new npm deps**, lockfile untouched), **open source or new code only**
+(no proprietary search SaaS), and it must fit this fork's existing web
+posture (url-gate allowlist, `--ignore-scripts`, LAN-first servers).
+
+## 0. Orientation for the implementing session (verified 2026-11-26)
+
+This plan was written by a prior session that hit its context limit; nothing
+here is implemented yet. Everything needed is in this file plus the code
+anchors below.
+
+- **Branch**: implement on `chore/fork-quality-pass` (repo
+  `/home/fred/Projects/little-coder`), which carries the completed fork
+  quality pass (root `PLAN.md`, findings F1–F9) plus upstream PRs #133
+  (CJK width) and #143 (npmscan). Branch is unpushed; `feat/url-gate` is
+  its parent. Local refs `pr-133`/`pr-143` exist and may be deleted.
+- **Gates that must stay green at every commit**:
+  `npm run typecheck` (clean), `npm run lint` (0 — type-checked ESLint;
+  `eslint.config.mjs` documents the `any`-boundary exemptions),
+  `npx vitest run` (baseline: **927 passed, 14 skipped, 0 failed**).
+- **Code anchors** (line numbers as of plan commit `7fb3b52`):
+  - `.pi/extensions/extra-tools/index.ts` — `webfetch` tool ~line 69
+    (regex-strip extraction, bare `setTimeout` 30 s controller),
+    `websearch` ~line 136, DDG URL line 147; both `execute(_id, args)`
+    take NO signal param yet (§2.3 adds it — pi passes
+    `execute(id, args, signal, update, ctx)`; upstream #139's diff shows
+    the shape).
+  - `.pi/extensions/url-gate/gate.ts:37` — `websearch:
+    "https://html.duckduckgo.com/html/"` fixed-endpoint map; pinned by
+    `gate.test.ts:26–27`.
+  - `start-little-coder.sh:19` — `exec
+    /home/fred/little-coder-transport/start_little_coder.sh "$@"`; §2.6
+    replaces the `exec` with child + EXIT trap (pattern verified on this
+    machine: crash propagates the code, SIGINT and SIGHUP both run the
+    trap). The transport script (outside the repo) does env setup and
+    derives `PI_PKG_JSON` from the resolved launcher; its diagnostics go
+    to `$XDG_STATE_HOME/little-coder/launcher-diag.log`.
+- **Machine facts**: podman 6.2 rootless (**no docker**); laptop 30 GiB RAM
+  / 24 cores; SearXNG measured 142 MB idle, 0.8 s JSON search (§6).
+- **Live SearXNG JSON shape** (observed 2026-11-26 — the §4 fixture should
+  mirror this so no network is needed to build it): top level
+  `{query, results[], answers, corrections, infoboxes, suggestions,
+  unresponsive_engines}`; each result carries at least `{title, url,
+  content, engine, engines, score, category, parsed_url}` (plus optional
+  `publishedDate`, `thumbnail`, …); ~26 results for a normal query;
+  `content` is the snippet.
+- **Do not touch** `package.json` / `package-lock.json` (zero-dep design;
+  also a plain `npm install` re-resolution can crash arborist via the
+  `file:./vendor/node-domexception` override — moot if no deps are added).
+- **Related docs**: root `PLAN.md` (fork state + verification recipes),
+  `docs/url-gate-todo.md` (gate bypass list — keep honest), README "This
+  fork" section (launch topology, env conventions, pi bump procedure).
 
 ## 1. What #139 is, and what is worth replicating
 
