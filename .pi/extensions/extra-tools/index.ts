@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { globFiles, renderGlobOutcome } from "./glob.ts";
+import { extractContent } from "./extract.ts";
 import { duckduckgoSearch, resolveSearchProvider, searxngBaseUrl, searxngSearch, webSignal } from "./search.ts";
 import { isUrlAllowed, loadWhitelist, whitelistPath, isSessionAllowed } from "../url-gate/gate.ts";
 
@@ -76,12 +77,15 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "webfetch",
     label: "WebFetch",
-    description: "Fetch a URL and return its text content (HTML stripped). Capped at 25K chars.",
+    description:
+      "Fetch a URL and return its extracted main text (nav/footer/script chrome dropped; " +
+      "<main>/<article> preferred; <pre> kept). With `prompt`, the passages whose wording matches it, " +
+      "in document order. Capped at 25K chars.",
     parameters: Type.Object({
       url: Type.String({ description: "URL to fetch" }),
-      prompt: Type.Optional(Type.String({ description: "Hint for what to extract (informational)" })),
+      prompt: Type.Optional(Type.String({ description: "What to extract — passages matching it are ranked first" })),
     }),
-    async execute(_id, { url }, signal?: AbortSignal) {
+    async execute(_id, { url, prompt }, signal?: AbortSignal) {
       const web = webSignal(signal);
       try {
         let res: Response | null = null;
@@ -118,12 +122,11 @@ export default function (pi: ExtensionAPI) {
         }
         const ct = res.headers.get("content-type") || "";
         let text = await res.text();
-        if (ct.includes("html")) {
-          text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-          text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
-          text = text.replace(/<[^>]+>/g, " ");
-          text = text.replace(/\s+/g, " ").trim();
-        }
+        // Block-level extraction instead of the old three-regex tag strip:
+        // chrome blocks dropped, <main>/<article> preferred, <pre> kept, and
+        // `prompt` used as the objective (the #139 "objective" half, local and
+        // deterministic). Provider-independent, so it applies to every fetch.
+        if (ct.includes("html")) text = extractContent(text, { objective: prompt });
         if (text.length > 25_000) text = text.slice(0, 25_000);
         return { content: [{ type: "text", text }], details: {} };
       } catch (e) {
