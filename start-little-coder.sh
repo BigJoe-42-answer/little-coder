@@ -81,6 +81,18 @@ lc_exit() {
 }
 trap lc_exit EXIT
 
+# The transport script is machine-specific (env setup, provider key, model
+# auto-sync, llama fallback). Resolve it through LC_TRANSPORT so this repo is
+# honest on other machines: default is THIS machine's path, and a missing file
+# fails loudly naming the variable instead of dying with a bare bash error.
+LC_TRANSPORT="${LC_TRANSPORT:-/home/fred/little-coder-transport/start_little-coder.sh}"
+if [ ! -f "$LC_TRANSPORT" ]; then
+  echo "ERROR: transport script not found: $LC_TRANSPORT" >&2
+  echo "start-little-coder.sh wraps the machine's transport script (env setup, model sync)." >&2
+  echo "Point it at yours:  LC_TRANSPORT=/path/to/start_little_coder.sh $0" >&2
+  exit 1
+fi
+
 lc_searxng_start
 
 # The transport script runs as a CHILD, not via exec: exec would replace this
@@ -92,7 +104,7 @@ lc_searxng_start
 # transport's final read -p) sees immediate EOF and the window closes the
 # moment it opens. <&0 re-attaches this script's stdin (the terminal) to the
 # child — removing it reproduces the bug (verified: the child reads EOF).
-/home/fred/little-coder-transport/start_little-coder.sh "$@" <&0 &
+"$LC_TRANSPORT" "$@" <&0 &
 LC_CHILD_PID=$!
 wait "$LC_CHILD_PID"
 exit $?

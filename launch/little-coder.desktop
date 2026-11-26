@@ -1,0 +1,19 @@
+[Desktop Entry]
+Comment[en_US]=little-coder coding agent (this checkout; DuckDuckGo web search default)
+Comment=little-coder coding agent (this checkout; DuckDuckGo web search default)
+# Canonical base entry. install.sh --desktop substitutes the actual checkout
+# root for the absolute path below, so the entry works in any clone location.
+Exec=/home/fred/Projects/little-coder/start-little-coder.sh
+GenericName[en_US]=
+GenericName=little-coder
+Icon=little-coder
+MimeType=
+Name[en_US]=little-coder
+Name=little-coder
+Path=
+StartupNotify=true
+Terminal=true
+TerminalOptions=
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=

@@ -12,6 +12,19 @@ The research story behind all this — why scaffold–model fit matters, how a 9
 This checkout is a **private fork of `itayinbarr/little-coder` (v1.20.0 base)** and is
 **not published to npm**. Everything below is why that matters operationally:
 
+**Install from a clone** (there is no npm package to fetch): `./install.sh`
+verifies Node, installs dependencies (`--ignore-scripts` — pi is patched at
+launch, never by an npm hook), adds the playwright chromium runtime, and
+smoke-tests the `launch/` shim. `./install.sh --desktop` additionally installs
+the Desktop integration for the current user — the quadlet unit, a generated
+SearXNG `settings.yml` (mode 600, never overwritten), the brand icons, the
+`little-coder` / `little-coder-research` Desktop entries (with the actual
+checkout path substituted), and the `127.0.0.1:8888` url-whitelist entry.
+The manual recipes below stay the source of truth; the script automates them
+idempotently. Note `start-little-coder.sh` wraps a machine-specific transport
+script — point `LC_TRANSPORT` at yours (it fails loudly naming the path when
+missing).
+
 - **Never `npm install -g little-coder` over this build** — it would clobber the fork.
   The update flow (`--update`, the launch prompt, and `/update`) therefore never
   targets the `little-coder` package: it polls npm for a newer **pi**
