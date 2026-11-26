@@ -42,3 +42,6 @@ brainstorm_outputs/
 # deep-research batch eval artifacts
 benchmarks/deep_research_runs/
 dist/
+
+# Fork working plan — kept on disk, not published
+PLAN.md

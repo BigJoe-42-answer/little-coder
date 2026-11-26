@@ -25,6 +25,75 @@ idempotently. Note `start-little-coder.sh` wraps a machine-specific transport
 script — point `LC_TRANSPORT` at yours (it fails loudly naming the path when
 missing).
 
+### What this fork adds
+
+On top of upstream v1.20.0 (full entries in [CHANGELOG](CHANGELOG.md), `Unreleased`):
+
+- **`url-gate`** — a URL allowlist with a human in the loop: `webfetch`,
+  `websearch`, the `Browser*` tools, every `http(s)` URL inside a shell
+  command, and every redirect hop are judged against
+  `~/.config/little-coder/url-whitelist.json`; unlisted URLs ask, block, or
+  pass per `LITTLE_CODER_URL_GATE`. The browser half enforces at the CDP
+  request layer, where unnamed destinations (link clicks, meta/JS redirects,
+  back-navigations) are actually visible. Known limits: [`docs/url-gate-todo.md`](docs/url-gate-todo.md).
+- **Open-source web search** — `LITTLE_CODER_WEB_PROVIDER=duckduckgo|searxng`:
+  an opt-in **self-hosted [SearXNG](https://docs.searxng.org/)** backend
+  (rootless podman quadlet unit, session-scoped: the launcher starts it and
+  stops it with the last session), fail-loud provider contract, zero new npm
+  dependencies. The open equivalent of upstream PR [#139](https://github.com/itayinbarr/little-coder/pull/139)'s
+  provider-selection design, without the proprietary backend.
+- **Real content extraction in `webfetch`** — chrome blocks dropped,
+  `<main>`/`<article>` preferred, `<pre>` kept, and the `prompt` parameter
+  returns objective-ranked passages (dependency-free block extractor).
+- **Thinking-budget and user-settings fixes** — `LITTLE_CODER_THINKING_BUDGET`
+  actually applies ([#130](https://github.com/itayinbarr/little-coder/issues/130)/[#137](https://github.com/itayinbarr/little-coder/issues/137)),
+  `~/.config/little-coder/settings.json` is merged field-by-field over the
+  shipped profile, and a budget breach no longer loops
+  ([#131](https://github.com/itayinbarr/little-coder/issues/131)).
+- **Update flow targets pi, never this package** — pi pinned exactly, and
+  `patch-pi` anchors refreshed to reach the bundle the bin actually runs
+  ([#127](https://github.com/itayinbarr/little-coder/issues/127)'s mechanism).
+- **CJK output can no longer overflow the terminal** — upstream PR
+  [#133](https://github.com/itayinbarr/little-coder/pull/133) by [@zintown](https://github.com/zintown), incorporated.
+- **Lockfile supply-chain scan in CI** — upstream PR
+  [#143](https://github.com/itayinbarr/little-coder/pull/143) by [@salemalem](https://github.com/salemalem), incorporated (npmscan, commit-pinned).
+- **Desktop integration** — `start-little-coder.sh`, the `launch/` shim that
+  pins this checkout as the runtime, brand icons, Desktop entries, and
+  `install.sh --desktop` to install the whole set idempotently.
+- **Hardened CI** — typecheck + lint + the full vitest suite on every push,
+  with typescript-eslint type-checked rules enforced.
+
+### Credits
+
+- **little-coder** is an upstream project by [Itay Inbar](https://github.com/itayinbarr)
+  ([itayinbarr/little-coder](https://github.com/itayinbarr/little-coder)), Apache-2.0 —
+  this repository is a fork of v1.20.0 carrying the changes above. Everything
+  not listed under "What this fork adds" is upstream's work; see the
+  [Attribution](#attribution) section for the lineage before v1.20.0.
+- **Incorporated upstream PRs:** [#133](https://github.com/itayinbarr/little-coder/pull/133)
+  (CJK display width) by [@zintown](https://github.com/zintown) and
+  [#143](https://github.com/itayinbarr/little-coder/pull/143) (npmscan CI)
+  by [@salemalem](https://github.com/salemalem).
+- **Design credit:** upstream PR [#139](https://github.com/itayinbarr/little-coder/pull/139)
+  by [@georgeatparallel](https://github.com/georgeatparallel) — its
+  provider-selection shape (`LITTLE_CODER_WEB_PROVIDER`, fail-loud, no silent
+  fallback) is what the fork's SearXNG backend implements openly; the fork
+  deliberately ships no proprietary search backend.
+- **Third-party programs this build uses or integrates:**
+  [pi](https://pi.dev) (`@earendil-works/pi-coding-agent`, the agent runtime,
+  by Mario Zechner — see [Attribution](#attribution));
+  [SearXNG](https://docs.searxng.org/) (AGPL-3.0, the optional self-hosted
+  metasearch backend); [Podman](https://podman.io) +
+  [Quadlet](https://www.redhat.com/en/blog/podman-quadlet-simple-deployment-containers-systemd)
+  (rootless, systemd-managed SearXNG container);
+  [Playwright](https://playwright.dev) + Chromium (the `Browser*` tools);
+  [llama.cpp](https://github.com/ggml-org/llama.cpp) and
+  [Ollama](https://ollama.com) (optional local model providers);
+  DuckDuckGo (the default `websearch` backend);
+  [npmscan-action](https://github.com/NPMscan/npmscan-action) (CI lockfile
+  scan); [vitest](https://vitest.dev), [ESLint](https://eslint.org),
+  [TypeScript](https://www.typescriptlang.org) (test/lint/typecheck gates).
+
 - **Never `npm install -g little-coder` over this build** — it would clobber the fork.
   The update flow (`--update`, the launch prompt, and `/update`) therefore never
   targets the `little-coder` package: it polls npm for a newer **pi**
