@@ -123,11 +123,14 @@ On top of upstream v1.20.0 (full entries in [CHANGELOG](CHANGELOG.md), `Unreleas
   `bin/little-coder.mjs` from this checkout. Smoke check:
   `PATH=$PWD/launch:$PATH command -v little-coder` must print the shim, not
   `/usr/bin/little-coder`.
-- **The old global install is gone** — `/usr/lib/node_modules/little-coder`
-  (stale: unpatched pi 1.5.2, update check aimed at the wrong package) has been
-  uninstalled with `sudo npm uninstall -g little-coder`. A bare-shell
-  `little-coder` now resolves to this checkout's `launch/` shim, which sits on
-  `PATH` — there is no second, older build left to launch by accident.
+- **The old system-wide npm install of little-coder is gone.** Early in the
+  fork's life, the upstream package was also installed machine-wide
+  (`npm install -g little-coder`, landing in `/usr/lib/node_modules/little-coder`)
+  alongside this checkout. That copy went stale — unpatched pi 1.5.2, an update
+  check aimed at the `little-coder` package instead of pi — and has since been
+  removed (`sudo npm uninstall -g little-coder`). Running `little-coder` from a
+  bare shell now resolves to this checkout's `launch/` shim, which sits on
+  `PATH`: one build on the machine, no older copy to launch by accident.
 - **url-gate is not a network sandbox.** The transport launcher runs with
   `LITTLE_CODER_PERMISSION_MODE=accept-all`, and `url-gate` compensates at the tool
   layer only. Known bypasses (scripts making their own HTTP calls, `curl -L` hops)
@@ -392,7 +395,7 @@ All small-model-specific extensions auto-disable for large/cloud models so they 
 
 ## Configuring models
 
-The shipped model list lives in **`models.json`** at the package root. The `llama-cpp-provider` extension reads it at startup and registers each provider via pi's `registerProvider()`. Editing this file in your global install **does** take effect — but it's overwritten on `npm install -g little-coder@latest`, so for anything you want to keep, use a user override file instead.
+The shipped model list lives in **`models.json`** at the package root. The `llama-cpp-provider` extension reads it at startup and registers each provider via pi's `registerProvider()`. Editing this file in an npm-installed little-coder **does** take effect — but it's overwritten on `npm install -g little-coder@latest` (this fork's checkout is never touched by npm, but the same advice applies to keeping customizations out of files its update flow replaces), so for anything you want to keep, use a user override file instead.
 
 User override resolution (first match wins):
 
