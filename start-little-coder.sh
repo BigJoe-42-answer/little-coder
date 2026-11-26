@@ -3,11 +3,10 @@
 # entries: base, alt (same launcher + --system-prompt alt-system-prompt.md),
 # and research (same launcher + LITTLE_CODER_WEB_PROVIDER=searxng through env).
 #
-# Why: the global install at /usr/lib/node_modules/little-coder is stale
-# (its update check still targets the little-coder package, so it never
-# notices a newer pi). This checkout carries the fork's fixes: the
-# pi-targeted update check, the in-TUI /update flow, and the "fork of
-# little-coder" branding.
+# Why: this checkout carries the fork's fixes — the pi-targeted update check,
+# the in-TUI /update flow, and the "fork of little-coder" branding. The old
+# global npm install of little-coder has been uninstalled; the shim below makes
+# `little-coder` resolve to THIS checkout from any shell.
 #
 # How: the transport launcher resolves little-coder via `command -v`, so
 # putting this repo's launch/ shim first on PATH makes it spawn THIS

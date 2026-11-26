@@ -123,11 +123,11 @@ On top of upstream v1.20.0 (full entries in [CHANGELOG](CHANGELOG.md), `Unreleas
   `bin/little-coder.mjs` from this checkout. Smoke check:
   `PATH=$PWD/launch:$PATH command -v little-coder` must print the shim, not
   `/usr/bin/little-coder`.
-- **The old global install** (`/usr/lib/node_modules/little-coder`) is stale and
-  unused by the path above — its update check targets the little-coder package and
-  it bundles an unpatched pi 1.5.2. It should be removed
-  (`sudo npm uninstall -g little-coder`) or clearly deprecated; until then, never
-  launch it by name from a bare shell without the `launch/` shim on `PATH`.
+- **The old global install is gone** — `/usr/lib/node_modules/little-coder`
+  (stale: unpatched pi 1.5.2, update check aimed at the wrong package) has been
+  uninstalled with `sudo npm uninstall -g little-coder`. A bare-shell
+  `little-coder` now resolves to this checkout's `launch/` shim, which sits on
+  `PATH` — there is no second, older build left to launch by accident.
 - **url-gate is not a network sandbox.** The transport launcher runs with
   `LITTLE_CODER_PERMISSION_MODE=accept-all`, and `url-gate` compensates at the tool
   layer only. Known bypasses (scripts making their own HTTP calls, `curl -L` hops)
