@@ -52,6 +52,56 @@ This checkout is a **private fork of `itayinbarr/little-coder` (v1.20.0 base)** 
   are listed in [`docs/url-gate-todo.md`](docs/url-gate-todo.md); closing them
   needs a network-layer boundary, which this fork does not provide.
 
+### Web search provider (opt-in, default unchanged)
+
+`websearch` keeps DuckDuckGo as its backend unless opted in. Two env vars,
+exported by `start-little-coder.sh` (so they inherit down transport → pi →
+sub-coders):
+
+- `LITTLE_CODER_WEB_PROVIDER=duckduckgo|searxng` — default `duckduckgo`.
+  An unknown value fails loudly; there is never a silent fallback between
+  backends.
+- `SEARXNG_URL=http://host:port` — required for `searxng`; unset/invalid is a
+  tool error naming the variable, and url-gate judges **the endpoint the
+  provider actually dials** (an unwhitelisted instance fails closed).
+
+`webfetch` extraction is provider-independent: HTML is reduced to main content
+(nav/footer/script chrome dropped, `<main>`/`<article>` preferred, `<pre>`
+kept), and `prompt` returns the passages matching it, in document order.
+
+**Self-hosted SearXNG (the only realistic open-source backend)** — local
+rootless podman on the laptop, bound to 127.0.0.1 only (an open LAN proxy is
+not what this is for; the whitelist entry stays a loopback host):
+
+1. Settings — `~/.config/little-coder/searxng/settings.yml`. The JSON API is
+   **off by default**, and the limiter rejects it, so both must be set:
+   ```yaml
+   use_default_settings: true
+   server:
+     secret_key: "<generated>"   # e.g. openssl rand -hex 32
+     limiter: false              # fine for a loopback single-user instance
+   search:
+     formats: [html, json]
+   ```
+2. Quadlet unit — the repo keeps the canonical definition under `launch/`;
+   install it **once** (the unit carries no `[Install]` section and
+   `Restart=no` on purpose — it is session-scoped, never boot-enabled):
+   ```bash
+   install -D -m 644 launch/lc-searxng.container ~/.config/containers/systemd/lc-searxng.container
+   systemctl --user daemon-reload
+   ```
+3. Env + whitelist — set `LITTLE_CODER_WEB_PROVIDER=searxng` and
+   `SEARXNG_URL=http://127.0.0.1:8888` in `start-little-coder.sh` itself, and
+   add `"127.0.0.1:8888"` to `~/.config/little-coder/url-whitelist.json`.
+
+The **launcher owns the container lifecycle**: with provider `searxng`,
+`start-little-coder.sh` starts `lc-searxng.service` (idempotent — a container
+left by a crashed session is reused), waits up to ~15 s for the instance to
+answer, and stops the unit when the **last** session exits (normal exit,
+Ctrl-C, or window close; a second Desktop window keeps it up). With provider
+`duckduckgo` the launcher never touches podman/systemd. Measured footprint:
+SearXNG ~142 MB idle, JSON search ~0.8 s, image ~250 MB.
+
 ## How it relates to pi
 
 [pi](https://pi.dev) is the minimal substrate — agent loop, multi-provider API, TUI, session tree, compaction, extension model. Four built-in tools (read / write / edit / bash) and a ~1000-token system prompt.
