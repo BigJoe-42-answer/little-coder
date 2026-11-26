@@ -98,6 +98,38 @@ un-gated third-party destination by design), and the MCP client dependency
   `SEARXNG_URL` reach them for free. Pin that with one test (child session
   sees the same provider resolution), mirroring #139's claim.
 
+### 2.6 Container lifecycle: session-scoped, not boot-persistent
+
+Requirement (maintainer, 2026-11-26): SearXNG starts automatically when
+needed and stops when little-coder stops — no always-on service.
+
+- **Owner of the lifecycle: `start-little-coder.sh`** (the repo's documented
+  entry point; both Desktop entries go through it). It gains:
+  1. if `LITTLE_CODER_WEB_PROVIDER=searxng`: `systemctl --user start
+     lc-searxng.service` (the quadlet-defined unit, §6 — NOT enabled at
+     boot), which is idempotent, so a container left by a crashed previous
+     session is simply reused;
+  2. a short readiness wait — poll `$SEARXNG_URL/` up to ~15 s (SearXNG
+     boots in ~2–5 s); if it never answers, warn and continue: websearch
+     will then fail loudly per §2.1 rather than the launcher blocking a
+     session start forever;
+  3. `trap … EXIT` → `systemctl --user stop lc-searxng.service`. This
+     requires dropping the current `exec` of the transport script (exec
+     replaces the shell and kills the trap) and running it as a child,
+     propagating its exit code. The EXIT trap fires on normal exit, Ctrl-C
+     and window close alike.
+  4. multi-session guard: stop only when no other `bin/little-coder.mjs`
+     is still running (`pgrep` check) — two Desktop windows share one
+     container; the first one closing must not cut the second off.
+- Why not lazy-start on the first `websearch` call: the extension would
+  shell out to podman, and nothing owns the stop side — the tool layer
+  managing host processes is a new kind of surface this fork has kept out.
+  Session scope IS the requirement's "when needed": the container exists
+  exactly while a searxng-configured session does.
+- Why the quadlet unit must NOT be enabled at boot and must use
+  `Restart=no`: a boot-enabled or auto-restarting unit fights the session
+  that deliberately stopped it (and contradicts the requirement).
+
 ## 3. Files
 
 | File | Change |
@@ -109,6 +141,7 @@ un-gated third-party destination by design), and the MCP client dependency
 | `.pi/extensions/url-gate/gate.test.ts` | searxng endpoint cases |
 | `.pi/extensions/extra-tools/search.test.ts` | NEW: hermetic provider/search tests |
 | `.pi/extensions/extra-tools/extract.test.ts` | NEW: extraction fixtures (nav/footer, code blocks, CJK) |
+| `start-little-coder.sh` | session-scoped container start/stop (§2.6): child exec + EXIT trap + readiness wait + multi-session guard |
 | `README.md` (fork section) | env vars + SearXNG deploy + whitelist entry |
 | `CHANGELOG.md` | `[Unreleased]` Added entry |
 
@@ -140,7 +173,10 @@ an empty lockfile diff and stays silent, which is a feature of this design.
    — extract.ts + tests.
 4. `fix(url-gate): gate the websearch endpoint the provider actually dials` —
    gate.ts + tests (land AFTER 2 so the pair is never inconsistent).
-5. `docs: web provider env vars + SearXNG deployment + whitelist entry` +
+5. `feat(launch): session-scoped SearXNG container — start on launch, stop on exit`
+   — start-little-coder.sh + quadlet unit file (kept in repo under
+   `launch/`, installed by a documented one-liner).
+6. `docs: web provider env vars + SearXNG deployment + whitelist entry` +
    CHANGELOG.
 
 ## 6. Deployment: local rootless podman on the laptop (measured 2026-11-26)
@@ -154,7 +190,9 @@ podman 6.2 — **docker is not installed**, use podman):
 - idle footprint: **142 MB RAM, ~5 % CPU burst, 8 PIDs**;
 - image ~250 MB, pull took seconds.
 
-One-shot run (what the smoke test did):
+Manual one-shot run (what the 2026-11-26 smoke test did — for experiments
+only; the quadlet unit below is the canonical definition, so the two never
+collide on the name `lc-searxng`):
 
 ```bash
 mkdir -p ~/.config/little-coder/searxng   # settings.yml: use_default_settings: true,
@@ -166,9 +204,10 @@ podman run -d --name lc-searxng \
   docker.io/searxng/searxng:latest
 ```
 
-Boot-persistent via a podman quadlet unit
-(`~/.config/containers/systemd/lc-searxng.container`, then
-`systemctl --user daemon-reload && systemctl --user start lc-searxng`):
+The container is defined by a podman quadlet unit
+(`~/.config/containers/systemd/lc-searxng.container`) but NOT installed at
+boot — the launcher owns start/stop (§2.6), so the unit carries no `[Install]`
+section and `Restart=no`:
 
 ```ini
 [Container]
@@ -179,18 +218,21 @@ Volume=%h/.config/little-coder/searxng/settings.yml:/etc/searxng/settings.yml:ro
 PodmanArgs=--memory=512m --cpus=2
 
 [Service]
-Restart=always
-
-[Install]
-WantedBy=default.target
+Restart=no
 ```
 
-Then `LITTLE_CODER_WEB_PROVIDER=searxng SEARXNG_URL=http://127.0.0.1:8888`
-(set in the transport launcher script), and add `127.0.0.1:8888` to
-`~/.config/little-coder/url-whitelist.json`. **Bind 127.0.0.1 only** — an
-open LAN proxy is not what this is for, and the url-gate entry stays a
-loopback host. `limiter: false` is appropriate for a loopback single-user
-instance; the JSON API is rejected by the limiter otherwise.
+(`systemctl --user daemon-reload` once after installing the file; the repo
+keeps the unit under `launch/` with a documented copy-into-place command.)
+
+Then set `LITTLE_CODER_WEB_PROVIDER=searxng` and
+`SEARXNG_URL=http://127.0.0.1:8888` **in `start-little-coder.sh` itself**
+(exported before the transport call, so the lifecycle decision in §2.6 can
+see them and they inherit down through transport → pi → sub-coders), and
+add `127.0.0.1:8888` to `~/.config/little-coder/url-whitelist.json`.
+**Bind 127.0.0.1 only** — an open LAN proxy is not what this is for, and
+the url-gate entry stays a loopback host. `limiter: false` is appropriate
+for a loopback single-user instance; the JSON API is rejected by the
+limiter otherwise.
 
 ## 7. Alternatives considered and rejected
 
@@ -220,18 +262,25 @@ instance; the JSON API is rejected by the limiter otherwise.
   returns ranked excerpts.
 - url-gate judges the real endpoint; an unwhitelisted instance fails closed.
 - Cancellation stops in-flight requests (test-proven).
+- Lifecycle: launching with provider `searxng` brings the container up
+  (readiness-gated); exiting the session — normally, by Ctrl-C, or by
+  window close — leaves it stopped (`systemctl --user is-active` proves it);
+  a second concurrent session keeps it up until the LAST one exits; with
+  provider `duckduckgo` the launcher never touches podman/systemd.
 - `git diff` shows **no package.json/package-lock.json changes**;
   `npm run lint`, `npm run typecheck`, `npx vitest run` all green; npmscan
   check passes trivially.
 
 ## 9. Risks / open questions
 
-- **Ops burden**: SearXNG needs a running container — measured at 142 MB
-  idle on this laptop, so capacity is not the cost; the cost is one quadlet
-  unit to keep it up across reboots (and rootless podman's user-session
-  assumption — fine on this desktop box, add `loginctl enable-linger` only
-  if it should run headless). Mitigated by DDG remaining the default and
-  loud errors.
+- **Lifecycle edges** (§2.6): a crashed session can leave the container
+  running — the next start is idempotent and reuses it, and the EXIT trap
+  still fires on Ctrl-C/window-close, so the leak window is a hard kill of
+  the launcher itself; acceptable, self-healing. Two concurrent sessions
+  share one container — the stop guard (`pgrep`) must be written against
+  the actual process pattern and tested by hand, not just reasoned about.
+  Rootless `systemctl --user` assumes a logged-in user session — true on
+  this desktop box (the Desktop entries require one anyway).
 - **SearXNG JSON API stability**: stable for years; behavior is now pinned
   against the LIVE response shape observed 2026-11-26 (`results[]` with
   `title`, `url`, `content`, plus `unresponsive_engines`), but tests still
