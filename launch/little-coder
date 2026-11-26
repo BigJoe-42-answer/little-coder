@@ -1,0 +1,6 @@
+#!/bin/bash
+# Shim named `little-coder` so `command -v little-coder` finds THIS checkout
+# when the launch/ directory is first on PATH (see start-little-coder.sh).
+# Runs the fork's launcher from this repo, not the global npm install.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec node "$HERE/../bin/little-coder.mjs" "$@"
