@@ -1,0 +1,20 @@
+[Desktop Entry]
+Comment[en_US]=little-coder with the self-hosted SearXNG web search backend (container starts on launch, stops on exit)
+Comment=little-coder with the self-hosted SearXNG web search backend (container starts on launch, stops on exit)
+# env VAR=... because .desktop Exec= cannot do shell assignments; the launcher
+# honors an inherited LITTLE_CODER_WEB_PROVIDER and owns the lc-searxng
+# container lifecycle (start + readiness wait on launch, stop on last exit).
+Exec=env LITTLE_CODER_WEB_PROVIDER=searxng /home/fred/Projects/little-coder/start-little-coder.sh
+GenericName[en_US]=
+GenericName=little-coder research
+Icon=system-run
+MimeType=
+Name[en_US]=little-coder research
+Name=little-coder research
+Path=
+StartupNotify=true
+Terminal=true
+TerminalOptions=
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=

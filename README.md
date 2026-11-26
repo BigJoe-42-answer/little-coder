@@ -93,6 +93,15 @@ not what this is for; the whitelist entry stays a loopback host):
 3. Env + whitelist — set `LITTLE_CODER_WEB_PROVIDER=searxng` and
    `SEARXNG_URL=http://127.0.0.1:8888` in `start-little-coder.sh` itself, and
    add `"127.0.0.1:8888"` to `~/.config/little-coder/url-whitelist.json`.
+   Or keep the script on the `duckduckgo` default and use the **second Desktop
+   entry** instead: `launch/little-coder-research.desktop` ("little-coder
+   research") passes `LITTLE_CODER_WEB_PROVIDER=searxng` through `env`, so
+   research-heavy sessions get SearXNG while the normal entry stays on
+   DuckDuckGo. Install:
+   ```bash
+   install -m 755 launch/little-coder-research.desktop ~/Desktop/
+   gio set ~/Desktop/little-coder-research.desktop metadata::trusted true
+   ```
 
 The **launcher owns the container lifecycle**: with provider `searxng`,
 `start-little-coder.sh` starts `lc-searxng.service` (idempotent — a container
