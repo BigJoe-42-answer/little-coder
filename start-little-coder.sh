@@ -1,6 +1,7 @@
 #!/bin/bash
-# little-coder fork launcher — the project-directory counterpart of
-# /home/fred/little-coder-transport/alt-system-prompt.sh.
+# little-coder fork launcher — the shared entry point behind the Desktop
+# entries: base, alt (same launcher + --system-prompt alt-system-prompt.md),
+# and research (same launcher + LITTLE_CODER_WEB_PROVIDER=searxng through env).
 #
 # Why: the global install at /usr/lib/node_modules/little-coder is stale
 # (its update check still targets the little-coder package, so it never

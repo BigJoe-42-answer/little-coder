@@ -36,7 +36,8 @@ reviewable commits, each green on its own.
    check, plus hand-applied extension patches with `.bak` files
    (`index.ts.pre-thinking-budget-fix.*.bak`). Bundles pi 1.5.2.
 3. **Transport launchers** `/home/fred/little-coder-transport/start_little-coder.sh`
-   (+ `alt-system-prompt.sh`) — env setup (strata key, thinking budget 12000,
+   (the alt Desktop entry reuses it with `--system-prompt alt-system-prompt.md`)
+   — env setup (strata key, thinking budget 12000,
    subcoder concurrency 1, model auto-sync, llama fallback). Resolves little-coder via
    `command -v`; hardcodes `PI_PKG_JSON=/usr/lib/node_modules/...` for its
    builtin:mcp check.
