@@ -1,108 +1,23 @@
-# url-gate — outstanding work
+# url-gate — known gaps and open work
 
-Working notes for whoever picks this up next. Everything below is dated against
-`feat/url-gate` at `3ee48f1`, little-coder v1.20.0, Node v26.11.1.
-
-## Where it stands (verified, not assumed)
-
-- **Branch:** `feat/url-gate` = `origin/main` + `d958e93` (feature) + `43b71e4`
-  (no-UI wording fix) + `3ee48f1` (tracked policy file + setup script). Not pushed,
-  no PR. The separate thinking-budget work lives on
-  `fix/thinking-budget-env-and-user-settings` (`7472f14`) and does **not** contain
-  url-gate.
-- **Installed:** NOT yet updated for the browser half — installing into
-  `/usr/lib/node_modules/little-coder` needs sudo, which this session cannot
-  type a password for. Re-run `bash ~/Projects/little-coder/scripts/url-gate-setup.sh`
-  (it now copies and verifies `browser/index.ts`, `browser/request-gate.ts` and the
-  live browser test alongside the url-gate files) before trusting the browser gate
-  in a real session.
-- **Policy:** live = `~/.config/little-coder/url-whitelist.json` (17 hosts),
-  tracked copy = `config/url-whitelist.json`, currently identical. Runtime reads
-  only the live one.
-- **Confirmed live:** host/path/wildcard matching; webfetch redirect-hop re-check;
-  shell-command URL scanning (`curl` to an off-list host is refused while an
-  on-list one runs); hot-reload after editing the file mid-session; sub-coders are
-  gated and now report the real reason (no UI) instead of blaming an env var.
-- **Tests:** `url-gate/gate.test.ts` 34 (matching, file loading, session-allowed,
-  the browser-mode rules) and `browser/url-gate-browser.test.ts` 17 driven against
-  live chromium; the whole suite is 894 passing with one pre-existing failure
-  (`llama-cpp-provider/swap-reprobe`, see below, unrelated). `tsc` clean.
-
-## P1 — upstream durability
-
-`npm i -g little-coder@latest` erases everything in `/usr/lib/node_modules/…`,
-including this extension. Until it is merged upstream the fix survives only as
-this branch plus `scripts/url-gate-setup.sh`.
-
-```bash
-git -C ~/Projects/little-coder push -u origin feat/url-gate
-```
-
-Suggested PR framing: `permission-gate` judges commands; some deployments want the
-opposite split — commands free, network destinations controlled — and a gate that
-only inspects tool inputs cannot deliver that, because under
-`LITTLE_CODER_PERMISSION_MODE=accept-all` a `curl https://off-list.host` is just a
-command. Reviewers will ask about the bypass list at the bottom of this file; the
-README-level answer should be "tool-layer gate, network-layer fence if you need a
-hard boundary."
-
-## Done — the browser half, verified at the layer that can see it
-
-`npx playwright install chromium` has been run, so chromium is present and the
-three previously-failing browser tests pass. The half that was unverified is now
-gated and covered by 17 live tests (`.pi/extensions/browser/url-gate-browser.test.ts`)
-that drive the real `Browser*` tools against a local server and assert on the
-**server's hit log** — "blocked" means the request never arrived, not that a tool
-printed an apology. Verified blocked: a `BrowserClick` to an off-list host, a form
-post, a 302 **hop** from an on-list URL, a meta refresh, a JS `location.href`, a
-`target=_blank` link, and a `BrowserBack` that would re-navigate an off-list
-history entry. Verified working: `BrowserHistory` stays clean of refused
-destinations, an on-list redirect chain still lands and renders, a gzipped page
-still extracts, and a host approved at the prompt passes the request gate too
-(otherwise the prompt's "yes" would produce a blocked page).
-
-Two things measured here that change the design, both written up in
-`.pi/extensions/browser/request-gate.ts`:
-
-- **`page.on("request")` + `request.abort()` aborts nothing.** `abort()` only works
-  on a request intercepted by `page.route()`. The candidate fix in the old version
-  of this file was that listener, and it would have looked healthy while enforcing
-  nothing — the failure mode this whole extension is wary of.
-- **`page.route()` cannot see redirect hops.** Playwright treats a request and its
-  redirects as one unit: the handler fires for the original request and Chromium
-  follows the `Location` unseen. With a route installed, an on-list `/redirect302`
-  reached an off-list host at `status=200`. Walking the chain in the handler and
-  `route.fulfill()`-ing the result does block the hops, but it moves every document
-  through Node and breaks pages: the browser renders the target's bytes under the
-  **original** url (so relative links resolve against the wrong base) and
-  `content-encoding` must be stripped or a gzip body is decoded twice. Both
-  observed, both ugly.
-
-So the gate uses Chromium's CDP `Fetch.requestPaused`, which fires for each hop and
-leaves the browser doing its own fetching. `page.route()` stays as a fallback if no
-CDP session can be opened, with a test (`browserGateLayer() === "cdp"`) because a
-silent downgrade to that weaker layer once made every blocking test pass while hop
-protection was gone. Service workers are blocked (`serviceWorkers: "block"`): they
-fetch on a page's behalf behind page-level interception, which Playwright documents
-as a blind spot. `LITTLE_CODER_URL_GATE_BROWSER=main-frame|all|off` (default
-`main-frame`) decides the reach; `main-frame` gates navigations and hops and lets
-subresources through, because gating subresources breaks real pages — that was
-debated as a design question and the live test for it failed until the rule was
-stated correctly (main-frame = a *navigation into* a frame, not *any request from*
-the main frame).
+The durable gap list for `url-gate`: what it does NOT enforce, and the open
+work items. Verified behavior and design rationale live in the source comments
+([`.pi/extensions/url-gate/`](../.pi/extensions/url-gate),
+[`.pi/extensions/browser/request-gate.ts`](../.pi/extensions/browser/request-gate.ts))
+and the CHANGELOG — this file is only the gaps, so nobody re-learns them.
 
 ## P2 — the hook has no automated tests
 
-`gate.ts` (pure matching) has 28 tests. `index.ts` — the actual wiring: which tools
-are inspected, shell scanning, the ask/block/no-UI branches, prompt flow, block
-return shape — is proven only by live probes in a terminal. Add a hook-level test
-with a fake `pi` + `ctx` in the style of
+`gate.ts` (pure matching) has 34 tests. `index.ts` — the actual wiring: which
+tools are inspected, shell scanning, the ask/block/no-UI branches, prompt flow,
+block return shape — is proven only by live probes in a terminal. Add a
+hook-level test with a fake `pi` + `ctx` in the style of
 `permission-gate/manual-edit-confirm.test.ts`, asserting at minimum:
 
 1. `webfetch` + off-list url → `{ block: true }`, prompt shown once;
 2. approved host remembered for the session, second call not prompted;
-3. `bash` with an off-list URL inside the command → blocked; same command with an
-   on-list host → not blocked (the accept-all split);
+3. `bash` with an off-list URL inside the command → blocked; same command with
+   an on-list host → not blocked (the accept-all split);
 4. `hasUI: false` → blocked with the no-UI sentence, **not** the block-mode one
    (the regression that shipped once);
 5. `LITTLE_CODER_URL_GATE=off` → nothing blocked, no prompt.
@@ -112,17 +27,17 @@ with a fake `pi` + `ctx` in the style of
 A `dispatch` child has no UI, so every non-whitelisted host is refused with no
 prompt possible (verified). That is safe but invisible: research sub-coders
 quietly only ever see the whitelisted hosts. Options, in increasing effort:
-document it in the extension header; pre-seed a research host list; or have the
-child queue the approval question to the parent session's UI.
+document it in the extension header; pre-seed a research host list; or have
+the child queue the approval question to the parent session's UI.
 
 ## P2 — no visibility into what is actually enforced
 
-`sessionAllowedHostList()` in `gate.ts` is exported and never used — there is no
-`/url-gate` command (`registerTool`/`registerCommand` count in `index.ts` is 0),
-so a user cannot see the loaded patterns, whether the file parsed, the mode in
-force, or which hosts they approved this session. Cheap win: `/url-gate` printing
-file path + parse status + pattern count + mode + session-allowed hosts, plus
-`/url-gate add <host>` appending to the live file.
+`sessionAllowedHostList()` in `gate.ts` is exported and never used — there is
+no `/url-gate` command (`registerTool`/`registerCommand` count in `index.ts`
+is 0), so a user cannot see the loaded patterns, whether the file parsed, the
+mode in force, or which hosts they approved this session. Cheap win:
+`/url-gate` printing file path + parse status + pattern count + mode +
+session-allowed hosts, plus `/url-gate add <host>` appending to the live file.
 
 ## P3 — known bypasses (documented in source; fix some, never all)
 
@@ -135,54 +50,28 @@ file path + parse status + pattern count + mode + session-allowed hosts, plus
 | reader/proxy hosts | see do-not-add list below |
 
 The honest framing: this is a *policy surface with a human in the loop*, not a
-sandbox. A hard boundary needs `ufw`/`iptables` owner rules or a proxy allowlist.
+sandbox. A hard boundary needs `ufw`/`iptables` owner rules or a proxy
+allowlist.
 
-## P3 — do-not-add list (put this in the shipped template so nobody re-learns it)
+## P3 — do-not-add list (mirrored in the shipped template so nobody re-learns it)
 
 Proxy/reader/mirror hosts defeat the allowlist entirely because they fetch an
 arbitrary URL for the model — verified for `r.jina.ai` ("convert any URL to an
-LLM-friendly input"): `r.jina.ai`, `s.jina.ai`, `web.archive.org` / `*.archive.org`,
-Google cache/transcode hosts, `allorigins.win`, `corsproxy.io`, `12ft.io`, any
-"extract/read/proxy" SaaS. Attacker-writable content hosts are the other class:
-`*.github.io`, `*.githubusercontent.com`, public CDNs (`unpkg`, `jsdelivr`,
-`*.cloudfront.net`), pastebins, `transfer.sh`, `*.ngrok.io`, `*.s3.amazonaws.com`,
-URL shorteners (already pointless — hops are re-checked).
+LLM-friendly input"): `r.jina.ai`, `s.jina.ai`, `web.archive.org` /
+`*.archive.org`, Google cache/transcode hosts, `allorigins.win`, `corsproxy.io`,
+`12ft.io`, any "extract/read/proxy" SaaS. Attacker-writable content hosts are
+the other class: `*.github.io`, `*.githubusercontent.com`, public CDNs
+(`unpkg`, `jsdelivr`, `*.cloudfront.net`), pastebins, `transfer.sh`,
+`*.ngrok.io`, `*.s3.amazonaws.com`, URL shorteners (already pointless — hops
+are re-checked).
 
 ## P3 — small code nits
 
 - `whitelistPath()` trusts `XDG_CONFIG_HOME` blindly; a colon-delimited value
-  (that is `XDG_CONFIG_DIRS`, which KDE sets here) produces a bogus path and a
+  (that is `XDG_CONFIG_DIRS`, which KDE sets) produces a bogus path and a
   confusing "file not found". Validate, or fall through.
-- `whitelistPath()` ignores `PI_CODING_AGENT_DIR`, which other little-coder config
-  resolution honours.
-- No IP-wildcard form: `192.168.40.*` is unsupported; exact IPs only. Now stated
-  in the shipped template's `$pattern-limits` note rather than left to be found.
-- Static import `extra-tools → ../url-gate/gate.ts` makes `extra-tools` hard-depend
-  on `url-gate` being present; fine in the shipped set, worth a comment or a
-  dynamic import if anyone ever prunes extensions.
-
-## Unrelated failures already on this machine (not url-gate)
-
-1. **3 tests needed `npx playwright install chromium`** — now installed, all three
-   pass. The new `url-gate-browser.test.ts` skips itself if the binary is absent,
-   so a machine without it reports a skip instead of a failure.
-2. **`llama-cpp-provider/swap-reprobe.test.ts` fails on a clean checkout too.** It
-   stubs `fetch` to hand out `32768, 131072` in sequence and expects the *swap* to
-   consume the second value, but it receives `32768` — i.e. something now makes one
-   extra `/props` probe before the swap, shifting the stub's sequence. Smells like
-   the v1.20.0 "one `/v1/models` fetch answers all three questions" change altering
-   call counts. Worth a repro and an upstream issue; it may be masking a real
-   swap-time re-probe bug rather than being a flaky test.
-
-## Local config drift that will bite later
-
-- `~/.config/little-coder/settings.json` still has
-  `model_profiles."strata/iq3_s".thinking_budget = 32000`. The active model id is
-  `strata/qwen3.8-flash-next-iq3_s`, a *different key*, so it does not apply today —
-  pick `strata/iq3_s` once and that stale budget silently wins over the launcher's
-  `LITTLE_CODER_THINKING_BUDGET=65536`. Re-key or delete it.
-- `start_little-coder.sh` exports `LITTLE_CODER_PERMISSION_MODE=accept-all` (shell
-  whitelist off, deliberate here; url-gate is unaffected — separate env).
-- That launcher is a **non-interactive** bash, so nothing in `~/.bashrc` reaches it.
-  Every env var little-coder needs must be exported there, not in `.bashrc`.
-  (This is what made the whitelist silently resolve to "not found" the first time.)
+- `whitelistPath()` ignores `PI_CODING_AGENT_DIR`, which other little-coder
+  config resolution honours.
+- Static import `extra-tools → ../url-gate/gate.ts` makes `extra-tools`
+  hard-depend on `url-gate` being present; fine in the shipped set, worth a
+  comment or a dynamic import if anyone ever prunes extensions.

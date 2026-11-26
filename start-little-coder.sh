@@ -98,8 +98,8 @@ lc_searxng_start
 
 # The transport script runs as a CHILD, not via exec: exec would replace this
 # shell and kill the EXIT trap. The EXIT trap fires on normal exit, Ctrl-C and
-# window close alike (verified on this machine: the child's code propagates,
-# SIGINT and SIGHUP both run the trap).
+# window close alike (verified: the child's code propagates, SIGINT and SIGHUP
+# both run the trap).
 # The <&0 is load-bearing, not decoration: a non-interactive bash redirects a
 # background job's stdin from /dev/null, so without it the TUI (and the
 # transport's final read -p) sees immediate EOF and the window closes the
