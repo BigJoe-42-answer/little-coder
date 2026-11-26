@@ -2,19 +2,29 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import setupUpdateNotice, { upgradeArgs } from "./index.ts";
 
 describe("upgradeArgs", () => {
-  it("pins to the known latest version when provided", () => {
-    expect(upgradeArgs("1.9.12")).toEqual([
+  it("pins pi to the known latest version, installed under pkgRoot", () => {
+    expect(upgradeArgs("1.9.12", "/opt/little-coder")).toEqual([
       "install",
-      "-g",
       "--ignore-scripts",
-      "little-coder@1.9.12",
+      "--no-package-lock",
+      "--prefix",
+      "/opt/little-coder",
+      "@earendil-works/pi-coding-agent@1.9.12",
     ]);
   });
 
   it("falls back to @latest with no version, and always keeps --ignore-scripts", () => {
-    const args = upgradeArgs();
+    const args = upgradeArgs(undefined, "/opt/little-coder");
     expect(args).toContain("--ignore-scripts");
-    expect(args[args.length - 1]).toBe("little-coder@latest");
+    expect(args).toContain("--no-package-lock");
+    expect(args).toContain("--prefix");
+    expect(args[args.length - 1]).toBe("@earendil-works/pi-coding-agent@latest");
+  });
+
+  it("never targets the little-coder package itself", () => {
+    const args = upgradeArgs("1.9.12", "/opt/little-coder");
+    expect(args.some((a) => /^little-coder@/.test(a))).toBe(false);
+    expect(args).not.toContain("-g");
   });
 });
 

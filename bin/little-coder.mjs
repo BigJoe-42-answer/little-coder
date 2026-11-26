@@ -242,26 +242,31 @@ const startInPlanMode =
 if (startInPlanMode) process.env.LITTLE_CODER_PLAN_MODE = "1";
 
 // ---- 5. Update check (best-effort, blocks on TTY prompt only) ----
+// This build is not published as `little-coder`, so the check targets the
+// bundled pi runtime instead: currentVersion is the pi version we actually
+// spawn (piPkgRoot's package.json, resolved in step 3), and the update
+// installs the new pi in place under pkgRoot — the little-coder package
+// itself is never touched.
 let currentVersion = "0.0.0";
 try {
-  const pkgJson = JSON.parse(readFileSync(join(pkgRoot, "package.json"), "utf-8"));
-  if (typeof pkgJson?.version === "string") currentVersion = pkgJson.version;
+  const piPkgJson = JSON.parse(readFileSync(join(piPkgRoot, "package.json"), "utf-8"));
+  if (typeof piPkgJson?.version === "string") currentVersion = piPkgJson.version;
 } catch {
   // ignore — update-check just won't fire if we can't read the version
 }
 if (!isSubagent) {
   const forceUpdate = process.argv.includes("--update");
-  const exitAfterCheck = await checkForUpdate(currentVersion, { force: forceUpdate });
+  const exitAfterCheck = await checkForUpdate(currentVersion, { force: forceUpdate, pkgRoot });
   if (exitAfterCheck) {
-    // A successful update just replaced the on-disk launcher with the new
-    // version. Instead of exiting and making the user re-type `little-coder`
-    // (issue #66), re-exec THIS same launcher path under the current Node — the
-    // file on disk is now the updated one, so it loads the new code — passing
-    // the user's original args through so they land straight in the new
-    // version. We add --no-update-check so the child doesn't re-poll the
-    // registry (it's already the latest), which also rules out any relaunch
-    // loop. Best-effort: if the re-exec can't start, we fall back to exiting
-    // with the manual-relaunch hint that checkForUpdate already printed.
+    // A successful update just replaced the bundled pi in place. Instead of
+    // exiting and making the user re-type `little-coder` (issue #66), re-exec
+    // THIS same launcher path under the current Node — the launcher itself is
+    // unchanged, but the child will now spawn the freshly-installed pi —
+    // passing the user's original args through. We add --no-update-check so
+    // the child doesn't re-poll the registry (it's already the latest), which
+    // also rules out any relaunch loop. Best-effort: if the re-exec can't
+    // start, we fall back to exiting with the manual-relaunch hint that
+    // checkForUpdate already printed.
     const passthrough = process.argv
       .slice(2)
       .filter((a) => a !== "--update" && a !== "--no-update-check");

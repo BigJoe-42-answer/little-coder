@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ import {
   isSemver,
   shouldSkip,
   promptTimeoutMs,
+  appendUpdateLog,
 } from "./update-check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,8 @@ describe("isSemver", () => {
     expect(isSemver("2.3.4-rc-1")).toBe(true);
   });
   it("rejects non-semver and shell-metacharacter payloads", () => {
-    // Guards the Windows self-update sink `cmd.exe /c npm install little-coder@<v>`.
+    // Guards the Windows self-update sink `cmd.exe /c npm install
+    // @earendil-works/pi-coding-agent@<v>`.
     expect(isSemver("1.0")).toBe(false);
     expect(isSemver("latest")).toBe(false);
     expect(isSemver("1.0.0 & calc.exe")).toBe(false);
@@ -130,7 +132,7 @@ describe("read/writeCache", () => {
     const fs = readFileSync(path, "utf-8");
     expect(fs).toContain("garbage");
     // Now write actual garbage
-    require("node:fs").writeFileSync(path, "{not-json");
+    writeFileSync(path, "{not-json");
     expect(readCache()).toBeNull();
   });
 
@@ -234,10 +236,63 @@ describe("supply-chain protection (issue #50)", () => {
   const src = readFileSync(join(HERE, "update-check.mjs"), "utf-8");
 
   it("passes --ignore-scripts to the actual spawn", () => {
-    expect(src).toMatch(/"install",\s*"-g",\s*"--ignore-scripts"/);
+    expect(src).toMatch(/"install",\s*"--ignore-scripts",\s*"--no-package-lock",\s*"--prefix",/);
   });
 
   it("surfaces the flag in the user-visible command line", () => {
-    expect(src).toContain("npm install -g --ignore-scripts little-coder");
+    expect(src).toContain("npm install --ignore-scripts --no-package-lock --prefix");
+  });
+});
+
+// The update log holds npm's full transcript. It must be private (mode 600,
+// also tightened on pre-existing files) and bounded (once past 256 KB, only
+// the last 20 "\n===== …" transcripts survive).
+describe("appendUpdateLog (log hygiene)", () => {
+  let tmp;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "lc-ulog-test-"));
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const transcript = (n) => `\n===== t${n} npm install … =====\nbody ${n}\n`;
+
+  it("creates the log with mode 600", () => {
+    const log = join(tmp, "update.log");
+    appendUpdateLog(log, transcript(1));
+    expect(statSync(log).mode & 0o777).toBe(0o600);
+  });
+
+  it("tightens a pre-existing world-readable log", () => {
+    const log = join(tmp, "update.log");
+    writeFileSync(log, "", { mode: 0o644 });
+    appendUpdateLog(log, transcript(1));
+    expect(statSync(log).mode & 0o777).toBe(0o600);
+  });
+
+  it("appends in order while under the size cap", () => {
+    const log = join(tmp, "update.log");
+    appendUpdateLog(log, transcript(1));
+    appendUpdateLog(log, transcript(2));
+    const text = readFileSync(log, "utf-8");
+    expect(text.indexOf("t1")).toBeLessThan(text.indexOf("t2"));
+  });
+
+  it("trims to the last 20 transcripts once past 256 KB", () => {
+    const log = join(tmp, "update.log");
+    // 30 transcripts of ~20 KB each ≈ 600 KB, well past the cap.
+    for (let i = 1; i <= 30; i++) {
+      appendUpdateLog(log, `\n===== t${i} =====\n${"x".repeat(20 * 1024)}\n`);
+    }
+    const text = readFileSync(log, "utf-8");
+    const headers = text.split("\n===== ").length - 1;
+    expect(headers).toBe(20);
+    expect(text).toContain("===== t30");
+    expect(text).not.toContain("===== t10 ");
+    // Bound is by transcript count, not strict bytes: 20 survivors of ~20 KB
+    // each, i.e. well under the ~600 KB the untrimmed file would hold.
+    expect(text.length).toBeLessThan(22 * 20 * 1024);
+    expect(statSync(log).mode & 0o777).toBe(0o600);
   });
 });
