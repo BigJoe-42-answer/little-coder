@@ -45,9 +45,11 @@ un-gated third-party destination by design), and the MCP client dependency
 - Why SearXNG: it is the only realistic open-source web-search backend
   (metasearch over Google/Bing/Mojeek/etc., AGPL, single container). Public
   instances mostly disable `format=json` and rate-limit, so **self-hosting is
-  the primary path** — and this machine already runs LAN-first servers
-  (strata, llama.cpp), so a local SearXNG fits the topology. A whitelisted
-  public instance works too if the user prefers it.
+  the primary path** — and it runs **on this laptop, bound to 127.0.0.1**,
+  not on the strata server (that box has no spare capacity and is not
+  involved: SearXNG fans out to public engines over the internet from the
+  laptop itself; the CPU/RAM cost is local and measured small, see §6).
+  A whitelisted public instance works too if the user prefers it.
 - Error contract: provider `searxng` with `SEARXNG_URL` unset → tool error
   naming the variable; unreachable instance → error naming the URL. Never a
   silent fall back to DDG (a search that quietly changed backend and quality
@@ -141,20 +143,54 @@ an empty lockfile diff and stays silent, which is a feature of this design.
 5. `docs: web provider env vars + SearXNG deployment + whitelist entry` +
    CHANGELOG.
 
-## 6. SearXNG deployment (documented in README, ~10 lines)
+## 6. Deployment: local rootless podman on the laptop (measured 2026-11-26)
 
-```yaml
-# docker-compose.yml (or podman run)
-services:
-  searxng:
-    image: searxng/searxng
-    ports: ["8888:8080"]
-    volumes: ["./searxng-config:/etc/searxng"]
+Capacity is a non-issue on this machine and the strata server is not
+involved. Measured on this laptop (30 GiB RAM / 24 cores, 764 GB free,
+podman 6.2 — **docker is not installed**, use podman):
+
+- smoke container (`--memory=512m --cpus=2`), JSON search served in **0.8 s**,
+  26 results;
+- idle footprint: **142 MB RAM, ~5 % CPU burst, 8 PIDs**;
+- image ~250 MB, pull took seconds.
+
+One-shot run (what the smoke test did):
+
+```bash
+mkdir -p ~/.config/little-coder/searxng   # settings.yml: use_default_settings: true,
+                                          # search.formats: [html, json] (json is OFF by default),
+                                          # server.secret_key: <generated>, server.limiter: false
+podman run -d --name lc-searxng \
+  -p 127.0.0.1:8888:8080 --memory=512m --cpus=2 \
+  -v ~/.config/little-coder/searxng/settings.yml:/etc/searxng/settings.yml:ro \
+  docker.io/searxng/searxng:latest
 ```
-`settings.yml` must add `formats: [html, json]` under `search:` (json is off
-by default). Then `LITTLE_CODER_WEB_PROVIDER=searxng
-SEARXNG_URL=http://127.0.0.1:8888`, and add `127.0.0.1:8888` (or the LAN
-host) to `~/.config/little-coder/url-whitelist.json`.
+
+Boot-persistent via a podman quadlet unit
+(`~/.config/containers/systemd/lc-searxng.container`, then
+`systemctl --user daemon-reload && systemctl --user start lc-searxng`):
+
+```ini
+[Container]
+ContainerName=lc-searxng
+Image=docker.io/searxng/searxng:latest
+PublishPort=127.0.0.1:8888:8080
+Volume=%h/.config/little-coder/searxng/settings.yml:/etc/searxng/settings.yml:ro
+PodmanArgs=--memory=512m --cpus=2
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+Then `LITTLE_CODER_WEB_PROVIDER=searxng SEARXNG_URL=http://127.0.0.1:8888`
+(set in the transport launcher script), and add `127.0.0.1:8888` to
+`~/.config/little-coder/url-whitelist.json`. **Bind 127.0.0.1 only** — an
+open LAN proxy is not what this is for, and the url-gate entry stays a
+loopback host. `limiter: false` is appropriate for a loopback single-user
+instance; the JSON API is rejected by the limiter otherwise.
 
 ## 7. Alternatives considered and rejected
 
@@ -190,11 +226,16 @@ host) to `~/.config/little-coder/url-whitelist.json`.
 
 ## 9. Risks / open questions
 
-- **Ops burden**: SearXNG needs a running container. Mitigated by DDG
-  remaining the default and loud errors; but the feature is only as good as
-  the user's willingness to run one container.
-- **SearXNG JSON API stability**: stable for years, but pin behavior in tests
-  against the documented response shape, not a live instance.
+- **Ops burden**: SearXNG needs a running container — measured at 142 MB
+  idle on this laptop, so capacity is not the cost; the cost is one quadlet
+  unit to keep it up across reboots (and rootless podman's user-session
+  assumption — fine on this desktop box, add `loginctl enable-linger` only
+  if it should run headless). Mitigated by DDG remaining the default and
+  loud errors.
+- **SearXNG JSON API stability**: stable for years; behavior is now pinned
+  against the LIVE response shape observed 2026-11-26 (`results[]` with
+  `title`, `url`, `content`, plus `unresponsive_engines`), but tests still
+  run against a local fixture, never a live instance.
 - **Extraction quality** will not match a hosted objective-aware service;
   the escape hatch is the Browser tools, not a smarter local ranker.
 - Decide at implementation time whether `webfetch`'s extraction upgrade lands
