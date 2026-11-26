@@ -1,20 +1,54 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import setupProvider from "./index.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // End-to-end test of the issue #54 swap-time re-probe: drive the real default
-// export (which reads the shipped models.json, so `llamacpp` is present) with a
-// fake pi and a stubbed global fetch, then fire a model_select to confirm the
-// provider is re-registered with the fresh window and the user is notified.
+// export with a fake pi and a stubbed global fetch, then fire a model_select to
+// confirm the provider is re-registered with the fresh window and the user is
+// notified.
+//
+// The registry is pinned via LITTLE_CODER_MODELS_FILE, not the shipped
+// models.json: the loader's first candidate is the *user* override
+// (~/.config/little-coder/models.json), and on any machine that has one, the
+// shipped ids (qwen3.6-27b / qwen3.8-27b) are not what gets registered — the
+// swap handler then correctly ignores a selection of a model it never
+// registered, and the test fails for reasons that have nothing to do with the
+// code under test. Pinning the file makes the test hermetic either way.
+
+/** Write a two-model llamacpp registry and point LITTLE_CODER_MODELS_FILE at
+ *  it. Returns the temp dir for cleanup. */
+function pinModelsFile(): string {
+  const dir = mkdtempSync(join(tmpdir(), "lc-swapreprobe-"));
+  writeFileSync(
+    join(dir, "models.json"),
+    JSON.stringify({
+      default: "llamacpp/qwen3.6-27b",
+      providers: {
+        llamacpp: {
+          api: "openai-completions",
+          baseUrl: "http://127.0.0.1:9931/v1",
+          apiKey: "LLAMACPP_API_KEY",
+          models: [{ id: "qwen3.6-27b" }, { id: "qwen3.8-27b" }],
+        },
+      },
+    }),
+  );
+  process.env.LITTLE_CODER_MODELS_FILE = join(dir, "models.json");
+  return dir;
+}
 
 function fakePi() {
-  const registers: { name: string; ctx: number | undefined }[] = [];
+  const registers: { name: string; ctx: number | undefined; models: any[] }[] = [];
   let modelSelect: ((event: any, ctx: any) => any) | undefined;
   const pi = {
     registerProvider(name: string, config: any) {
-      registers.push({ name, ctx: config.models?.[0]?.contextWindow });
+      registers.push({
+        name,
+        ctx: config.models?.[0]?.contextWindow,
+        models: config.models ?? [],
+      });
     },
     on(event: string, handler: (event: any, ctx: any) => any) {
       if (event === "model_select") modelSelect = handler;
@@ -38,9 +72,16 @@ function fetchReturning(...nctxSequence: number[]) {
 }
 
 describe("llama-cpp-provider swap re-probe (issue #54)", () => {
+  let modelsDir: string | undefined;
+  beforeEach(() => {
+    modelsDir = pinModelsFile();
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.LITTLE_CODER_NO_CTX_PROBE;
+    delete process.env.LITTLE_CODER_MODELS_FILE;
+    if (modelsDir) rmSync(modelsDir, { recursive: true, force: true });
+    modelsDir = undefined;
   });
 
   it("re-registers llamacpp with the new window and notifies on swap", async () => {
@@ -62,8 +103,14 @@ describe("llama-cpp-provider swap re-probe (issue #54)", () => {
       { ui: { notify: (m: string) => notes.push(m) } },
     );
 
-    // Swap re-registered llamacpp at the new window, with a notice.
-    expect(registers.filter((r) => r.name === "llamacpp").at(-1)?.ctx).toBe(131072);
+    // Swap re-registered llamacpp with the SELECTED model at the new window
+    // (#121: only the model being selected is re-stamped; its siblings keep
+    // their own windows). The fake records every register call, so check the
+    // selected id rather than models[0].
+    const last = registers.filter((r) => r.name === "llamacpp").at(-1)!;
+    const byId = Object.fromEntries(last.models.map((m: any) => [m.id, m.contextWindow]));
+    expect(byId["qwen3.8-27b"]).toBe(131072);
+    expect(byId["qwen3.6-27b"]).toBe(32768);
     expect(notes).toEqual(["context window updated 32k → 128k"]);
   });
 
