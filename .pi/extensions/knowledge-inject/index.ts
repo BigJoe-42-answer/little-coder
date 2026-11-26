@@ -110,7 +110,10 @@ export default function (pi: ExtensionAPI) {
     const contextLimit: number = lc.contextLimit ?? 8192;
     if (estimateTokens(base) > contextLimit * 0.4) return;
 
-    const prompt = event.prompt ?? "";
+    // pi 1.6.1: BeforeAgentStartEvent is a union — the custom-message variant
+    // (pi.sendMessage(..., { triggerTurn: true }) while idle) carries no
+    // `prompt`. Only prompt-initiated runs get prompt-scored injection.
+    const prompt = event.messageType === "user" ? event.prompt : "";
     if (!prompt) return;
 
     // Never inject an entry that instructs tools this process cannot call.

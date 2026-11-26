@@ -344,8 +344,12 @@ export default function (pi: ExtensionAPI) {
       if (!recentToolCalls.includes(t)) recentToolCalls.unshift(t);
     }
 
-    const selected = selectSkills(event.prompt ?? "", budget, allowed);
-    const researchTask = looksLikeResearchTask(event.prompt ?? "");
+    // pi 1.6.1: BeforeAgentStartEvent is a union — the custom-message variant
+    // (pi.sendMessage(..., { triggerTurn: true }) while idle) carries no
+    // `prompt`; selection and the research-task nudge are prompt-driven.
+    const promptText = event.messageType === "user" ? event.prompt : "";
+    const selected = selectSkills(promptText, budget, allowed);
+    const researchTask = looksLikeResearchTask(promptText);
 
     if (selected.length === 0 && !researchTask) return;
 

@@ -33,9 +33,12 @@ function handlersFor(setup: (pi: any) => void): Record<string, Handler> {
 
 const ctx = { ui: { notify: () => {} } };
 
-/** A turn event with the little-coder budgets the extensions expect. */
+/** A turn event with the little-coder budgets the extensions expect.
+ *  messageType: "user" matches pi 1.6.1's BeforeAgentStartUserEvent — the
+ *  variant that carries `prompt`; the custom-message variant does not. */
 function turn(prompt: string, systemPrompt = "BASE SYSTEM PROMPT") {
   return {
+    messageType: "user",
     prompt,
     systemPrompt,
     systemPromptOptions: {
