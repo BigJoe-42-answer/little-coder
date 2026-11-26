@@ -1,0 +1,26 @@
+# SearXNG for little-coder's websearch (LITTLE_CODER_WEB_PROVIDER=searxng).
+#
+# Session-scoped by design: start-little-coder.sh starts this unit on launch
+# and stops it when the last little-coder session exits. There is deliberately
+# NO [Install] section (the unit is never enabled at boot) and Restart=no — a
+# boot-enabled or auto-restarting unit would fight the session that
+# deliberately stopped it.
+#
+# Install once (full recipe, incl. the settings.yml the Volume below needs —
+# JSON format enabled, secret_key set, limiter off for loopback — in the
+# README "This fork" section):
+#   install -D -m 644 launch/lc-searxng.container ~/.config/containers/systemd/lc-searxng.container
+#   systemctl --user daemon-reload
+#
+# Bound to 127.0.0.1 ONLY: an open LAN proxy is not what this is for, and the
+# url-gate whitelist entry (127.0.0.1:8888) stays a loopback host.
+
+[Container]
+ContainerName=lc-searxng
+Image=docker.io/searxng/searxng:latest
+PublishPort=127.0.0.1:8888:8080
+Volume=%h/.config/little-coder/searxng/settings.yml:/etc/searxng/settings.yml:ro
+PodmanArgs=--memory=512m --cpus=2
+
+[Service]
+Restart=no
