@@ -123,14 +123,13 @@ On top of upstream v1.20.0 (full entries in [CHANGELOG](CHANGELOG.md), `Unreleas
   `bin/little-coder.mjs` from this checkout. Smoke check:
   `PATH=$PWD/launch:$PATH command -v little-coder` must print the shim, not
   `/usr/bin/little-coder`.
-- **The old system-wide npm install of little-coder is gone.** Early in the
-  fork's life, the upstream package was also installed machine-wide
-  (`npm install -g little-coder`, landing in `/usr/lib/node_modules/little-coder`)
-  alongside this checkout. That copy went stale — unpatched pi 1.5.2, an update
-  check aimed at the `little-coder` package instead of pi — and has since been
-  removed (`sudo npm uninstall -g little-coder`). Running `little-coder` from a
-  bare shell now resolves to this checkout's `launch/` shim, which sits on
-  `PATH`: one build on the machine, no older copy to launch by accident.
+- **One build on the machine.** There is no system-wide npm install of
+  little-coder on this setup — if one ever gets installed
+  (`npm install -g little-coder`, landing in `/usr/lib/node_modules/little-coder`),
+  remove it (`sudo npm uninstall -g little-coder`): it shadows this checkout,
+  carries none of the fork's fixes, and its update check targets the
+  `little-coder` package instead of pi. Running `little-coder` from a bare
+  shell resolves to this checkout's `launch/` shim, which sits on `PATH`.
 - **url-gate is not a network sandbox.** The transport launcher runs with
   `LITTLE_CODER_PERMISSION_MODE=accept-all`, and `url-gate` compensates at the tool
   layer only. Known bypasses (scripts making their own HTTP calls, `curl -L` hops)
