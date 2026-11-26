@@ -7,6 +7,7 @@ describe("upgradeArgs", () => {
       "install",
       "--ignore-scripts",
       "--no-package-lock",
+      "--save-exact",
       "--prefix",
       "/opt/little-coder",
       "@earendil-works/pi-coding-agent@1.9.12",
@@ -17,6 +18,7 @@ describe("upgradeArgs", () => {
     const args = upgradeArgs(undefined, "/opt/little-coder");
     expect(args).toContain("--ignore-scripts");
     expect(args).toContain("--no-package-lock");
+    expect(args).toContain("--save-exact");
     expect(args).toContain("--prefix");
     expect(args[args.length - 1]).toBe("@earendil-works/pi-coding-agent@latest");
   });

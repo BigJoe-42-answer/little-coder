@@ -251,7 +251,7 @@ export async function checkForUpdate(currentVersion, opts = {}) {
 
   if (skip === "notice-only") {
     process.stderr.write(
-      `${headline}\n   Update with: npm install --ignore-scripts --no-package-lock --prefix ${opts.pkgRoot} @earendil-works/pi-coding-agent@latest\n\n`,
+      `${headline}\n   Update with: npm install --ignore-scripts --no-package-lock --save-exact --prefix ${opts.pkgRoot} @earendil-works/pi-coding-agent@latest\n\n`,
     );
     return false;
   }
@@ -277,10 +277,16 @@ export async function checkForUpdate(currentVersion, opts = {}) {
   // re-resolving an existing package-lock.json while the `overrides` map
   // points node-domexception at file:./vendor/node-domexception throws before
   // anything installs. The lock is refreshed by hand after an upgrade.
+  //
+  // --save-exact keeps the dependency pin exact. A bare
+  // `npm install pi@1.6.1` rewrites package.json to `^1.6.1` — observed here
+  // after one e2e run — and the next plain `npm install` would then pull an
+  // anchor-unaudited pi minor, the exact drift the pin exists to prevent.
   const npmArgs = [
     "install",
     "--ignore-scripts",
     "--no-package-lock",
+    "--save-exact",
     "--prefix",
     opts.pkgRoot,
     `@earendil-works/pi-coding-agent@${latest}`,

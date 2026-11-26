@@ -38,8 +38,10 @@ export function upgradeArgs(latest?: string, pkgRoot: string = PKG_ROOT) {
     : "@earendil-works/pi-coding-agent@latest";
   // --no-package-lock sidesteps an npm arborist crash this fork hits when
   // re-resolving the lock with the file:./vendor/node-domexception override
-  // (same rationale as bin/update-check.mjs).
-  return ["install", "--ignore-scripts", "--no-package-lock", "--prefix", pkgRoot, spec];
+  // (same rationale as bin/update-check.mjs). --save-exact keeps the pi pin
+  // exact: a bare `npm install pi@X` rewrites package.json to ^X, undoing
+  // the anchor-safety pin (observed after a real update run).
+  return ["install", "--ignore-scripts", "--no-package-lock", "--save-exact", "--prefix", pkgRoot, spec];
 }
 
 // Same log file the launcher's updater writes to (~/.cache/little-coder/
@@ -134,7 +136,7 @@ export default function (pi: ExtensionAPI) {
       }
       ctx.ui.notify(
         `✗ update failed (${why}). ${logPath ? `Full npm output: ${logPath}. ` : ""}` +
-          `Run manually: npm install --ignore-scripts --no-package-lock --prefix ${PKG_ROOT} @earendil-works/pi-coding-agent@latest`,
+          `Run manually: npm install --ignore-scripts --no-package-lock --save-exact --prefix ${PKG_ROOT} @earendil-works/pi-coding-agent@latest`,
         "error",
       );
     },

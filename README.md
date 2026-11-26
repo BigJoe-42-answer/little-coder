@@ -522,7 +522,7 @@ This is where the scaffolding work now compounds: knowledge injection/selection,
 
 **`--update` flag** — pass `little-coder --update` to force an immediate check for a newer bundled **pi** runtime, bypassing the 12-hour cache. Useful right after a pi release. The flag is stripped before pi sees argv so it won't produce an "Unknown option" error.
 
-**Updates never mention a new little-coder** — intentional: this build is not published as `little-coder`, so the update check never targets the little-coder package (updating it would clobber the custom install). It polls npm for a newer **pi** (`@earendil-works/pi-coding-agent`) and installs it in place under the little-coder install root (`npm install --ignore-scripts --no-package-lock --prefix <install-root> @earendil-works/pi-coding-agent@<latest>`; the full npm transcript of every attempt is appended to `~/.cache/little-coder/update.log`).
+**Updates never mention a new little-coder** — intentional: this build is not published as `little-coder`, so the update check never targets the little-coder package (updating it would clobber the custom install). It polls npm for a newer **pi** (`@earendil-works/pi-coding-agent`) and installs it in place under the little-coder install root (`npm install --ignore-scripts --no-package-lock --save-exact --prefix <install-root> @earendil-works/pi-coding-agent@<latest>`; the full npm transcript of every attempt is appended to `~/.cache/little-coder/update.log`).
 
 **`little-coder: command not found`** — npm's global bin directory isn't on your PATH. Run `npm config get prefix` to see where it installed; add `<prefix>/bin` to your PATH. Or reinstall with `sudo` if your prefix needs root.
 

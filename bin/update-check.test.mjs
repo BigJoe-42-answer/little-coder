@@ -236,11 +236,25 @@ describe("supply-chain protection (issue #50)", () => {
   const src = readFileSync(join(HERE, "update-check.mjs"), "utf-8");
 
   it("passes --ignore-scripts to the actual spawn", () => {
-    expect(src).toMatch(/"install",\s*"--ignore-scripts",\s*"--no-package-lock",\s*"--prefix",/);
+    expect(src).toMatch(/"install",\s*"--ignore-scripts",\s*"--no-package-lock",\s*"--save-exact",\s*"--prefix",/);
   });
 
   it("surfaces the flag in the user-visible command line", () => {
-    expect(src).toContain("npm install --ignore-scripts --no-package-lock --prefix");
+    expect(src).toContain("npm install --ignore-scripts --no-package-lock --save-exact --prefix");
+  });
+});
+
+// The exact pi pin is anchor safety; a bare `npm install pi@X` rewrites
+// package.json to ^X (observed after a real e2e update), so both update
+// paths must pass --save-exact.
+describe("exact pin survives updates (--save-exact)", () => {
+  it("update-check spawn args carry --save-exact", () => {
+    const src = readFileSync(join(HERE, "update-check.mjs"), "utf-8");
+    expect(src).toMatch(/"--save-exact"/);
+  });
+  it("update-notice upgradeArgs carry --save-exact", () => {
+    const src = readFileSync(join(HERE, "../.pi/extensions/update-notice/index.ts"), "utf-8");
+    expect(src).toMatch(/"--save-exact"/);
   });
 });
 
