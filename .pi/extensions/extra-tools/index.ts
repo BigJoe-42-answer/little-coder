@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { globFiles, renderGlobOutcome } from "./glob.ts";
+import { duckduckgoSearch, resolveSearchProvider, searxngBaseUrl, searxngSearch, webSignal } from "./search.ts";
 import { isUrlAllowed, loadWhitelist, whitelistPath, isSessionAllowed } from "../url-gate/gate.ts";
 
 // webfetch follows redirects, so gating only the URL the model named would
@@ -33,27 +34,10 @@ async function checkRedirectHop(nextUrl: string): Promise<string | null> {
 // Ports of tools.py::_glob, _webfetch, _websearch. Pi ships its own grep/find,
 // so those are not re-registered here.
 
-// pi calls execute(id, args, signal, update, ctx); the signal is undefined for
-// callers that pass none. Combine it with the tool's own 30 s ceiling so BOTH
-// cancel the fetch: Ctrl-C / a pi-side cancel aborts an in-flight request
-// instead of letting it run to completion, and the ceiling still bounds a hung
-// server when nobody cancels. The controller + clearTimeout shape (rather than
-// AbortSignal.timeout) keeps the timer unref'd-by-construction: a finished
-// fetch must not hold the event loop open for the rest of the 30 s.
-function webSignal(signal?: AbortSignal, timeoutMs = 30_000): { signal: AbortSignal; done: () => void } {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else
-      signal.addEventListener(
-        "abort",
-        () => controller.abort(),
-        { once: true },
-      );
-  }
-  return { signal: controller.signal, done: () => clearTimeout(timer) };
-}
+// webSignal (shared with search.ts): combines pi's execute(id, args, signal,
+// update, ctx) AbortSignal with the tool's own 30 s ceiling so BOTH cancel the
+// fetch — Ctrl-C / a pi-side cancel stops an in-flight request, and the
+// ceiling still bounds a hung server when nobody cancels.
 
 export default function (pi: ExtensionAPI) {
   // ── glob ────────────────────────────────────────────────────────────────
@@ -158,49 +142,30 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "websearch",
     label: "WebSearch",
-    description: "Search the web via DuckDuckGo and return the top ~8 results as Markdown.",
+    description:
+      "Search the web and return the top ~8 results as Markdown. Provider: DuckDuckGo by default; " +
+      "LITTLE_CODER_WEB_PROVIDER=searxng + SEARXNG_URL routes through a self-hosted SearXNG instance.",
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
     }),
     async execute(_id, { query }, signal?: AbortSignal) {
-      const web = webSignal(signal);
       try {
-        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-        const res = await fetch(url, {
-          headers: { "User-Agent": "Mozilla/5.0 (compatible)" },
-          redirect: "follow",
-          signal: web.signal,
-        });
-        const body = await res.text();
-        const titleRe = /class="result__title"[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-        const snippetRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/div>/g;
-        const titles: Array<{ link: string; title: string }> = [];
-        let m: RegExpExecArray | null;
-        while ((m = titleRe.exec(body)) && titles.length < 8) {
-          titles.push({ link: m[1], title: m[2].replace(/<[^>]+>/g, "").trim() });
-        }
-        const snippets: string[] = [];
-        while ((m = snippetRe.exec(body)) && snippets.length < 8) {
-          snippets.push(m[1].replace(/<[^>]+>/g, "").trim());
-        }
-        if (titles.length === 0) {
-          return {
-            content: [{ type: "text", text: "No results found" }],
-            details: {},
-          };
-        }
-        const out = titles
-          .map((t, i) => `**${t.title}**\n${t.link}\n${snippets[i] ?? ""}`)
-          .join("\n\n");
-        return { content: [{ type: "text", text: out }], details: {} };
+        // Provider resolution is fail-loud (unknown value throws naming the
+        // env var; searxng without a usable SEARXNG_URL throws naming it) and
+        // NEVER falls back to another backend — the same module url-gate uses,
+        // so the gate and the tool dial the same endpoint.
+        const provider = resolveSearchProvider();
+        const text =
+          provider === "searxng"
+            ? await searxngSearch(query, { baseUrl: searxngBaseUrl(), signal })
+            : await duckduckgoSearch(query, { signal });
+        return { content: [{ type: "text", text }], details: {} };
       } catch (e) {
         return {
           content: [{ type: "text", text: `Error: ${(e as Error).message}` }],
           details: {},
           isError: true,
         };
-      } finally {
-        web.done();
       }
     },
   });
