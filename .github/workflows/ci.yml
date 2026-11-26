@@ -1,10 +1,23 @@
 name: CI
 
-# Cheap install sanity check on every push/PR. `npm ci` verifies that every
+# Install sanity + types + tests on every push/PR. `npm ci` verifies that every
 # lockfile entry is resolvable and matches its pinned `resolved`+`integrity`
 # before extracting anything, so a lockfile regression (e.g. lockfile entries
 # missing their `integrity`) fails CI instead of every user's
 # `npm install -g little-coder`.
+#
+# Typecheck and the vitest suite were added after a fork review found both a
+# failing test and three pi-type drift errors sitting on the checked-out
+# branch unnoticed — install-only CI cannot catch those.
+#
+# Live/browser tests: chromium IS installed here, so the live suites run.
+# url-gate-browser.test.ts is fully local (two local HTTP servers, no external
+# network); live-integration.test.ts fetches one Wikipedia page. Both suites
+# self-skip when the chromium binary is absent (~/.cache/ms-playwright), so a
+# machine without `npx playwright install chromium` — including a plain
+# `npx vitest run` on a fresh checkout — reports skips, not failures. That is
+# the documented convention: never fail a suite for a missing browser, and CI
+# installs the browser so the coverage is real.
 
 on:
   push:
@@ -24,5 +37,18 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # --ignore-scripts: don't download playwright browsers on every CI run.
+      # --ignore-scripts: don't download playwright browsers during install;
+      # the explicit step below does it once, where the cost is visible.
       - run: npm ci --ignore-scripts
+
+      # pi runtime patches (scripts/patch-pi.mjs) are asserted against the
+      # installed pi dist by scripts/patch-pi.test.mjs — the loud gate that
+      # keeps a pi bump from silently no-op-ing the abort-marker and
+      # edit-repair patches.
+      - run: npm run typecheck
+
+      # Chromium for the live browser suites (see header comment). The ubuntu
+      # runner image already carries the system libraries, so no --with-deps.
+      - run: npx playwright install chromium
+
+      - run: npx vitest run
