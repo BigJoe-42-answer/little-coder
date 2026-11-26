@@ -73,7 +73,10 @@ export async function globFiles(pattern: string, opts: GlobOptions): Promise<Glo
   // `exclude` as a predicate isn't in every @types/node version's fs.glob
   // signature, but it's supported at runtime (Node 22+); cast to pass it through.
   for await (const m of fsGlob(pattern, { cwd: opts.base, exclude } as Parameters<typeof fsGlob>[1])) {
-    matches.push(`${opts.base}/${m}`);
+    // fs.glob yields string | Dirent; a raw Dirent in the template would
+    // stringify to "[object Object]" and poison the match list.
+    const name = typeof m === "string" ? m : m.name;
+    matches.push(`${opts.base}/${name}`);
     if (matches.length >= maxMatches) {
       matchTruncated = true;
       break;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,7 +96,7 @@ describe("skills directory loads from repo", () => {
       const exampleBlocks = [...(parsed?.body ?? "").matchAll(/```tool\s*\n([\s\S]*?)```/g)];
       for (const match of exampleBlocks) {
         const call = JSON.parse(match[1]);
-        expect(call.name, `${file} example should use target_tool=${target}`).toBe(target);
+        expect(call.name, `${file} example should use target_tool=${JSON.stringify(target)}`).toBe(target);
       }
     }
   });

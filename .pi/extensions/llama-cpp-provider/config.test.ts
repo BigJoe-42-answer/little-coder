@@ -673,7 +673,7 @@ describe("router-mode context windows (issue #121)", () => {
       const json = await fetchModelList("http://h:1/v1", {
         fetchImpl: (async () => {
           throw new Error("ECONNREFUSED");
-        }) as any,
+        }),
       });
       expect(json).toBeUndefined();
     });

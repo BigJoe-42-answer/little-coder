@@ -95,6 +95,6 @@ export function computeHeuristics(report: string, meta: PipelineMeta): ReportHeu
   if (words >= 1200) s += 10;
   if (h.hasSelfReference) s -= 15;
   s -= Math.min(20, h.failedSubagents * 10);
-  h.jsonFallbacks && (s -= 5);
+  if (h.jsonFallbacks) s -= 5;
   return { ...h, structureScore: Math.max(0, Math.min(100, s)) };
 }

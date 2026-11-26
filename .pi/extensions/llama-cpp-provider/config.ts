@@ -138,7 +138,7 @@ export function applyEnvOverrides(providers: Record<string, ProviderEntry>, env:
   for (const [name, entry] of Object.entries(providers)) {
     const envVar = LEGACY_BASE_URL_ENV[name];
     if (envVar && env[envVar]) {
-      out[name] = { ...entry, baseUrl: env[envVar]! };
+      out[name] = { ...entry, baseUrl: env[envVar] };
     } else {
       out[name] = entry;
     }
@@ -449,7 +449,7 @@ export async function probeServedModels(
  *  failure. The derivations over it (`contextWindowFromModelList`,
  *  `withPerModelContextWindows`, `discoveredModels`) are pure, so one fetch
  *  now answers what used to cost three round trips against the same endpoint. */
-export async function fetchModelList(baseUrl: string, deps: ProbeDeps = {}): Promise<unknown | undefined> {
+export async function fetchModelList(baseUrl: string, deps: ProbeDeps = {}): Promise<unknown> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const root = baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
   const headers: Record<string, string> = {};

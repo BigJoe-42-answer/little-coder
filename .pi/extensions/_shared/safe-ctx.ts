@@ -23,7 +23,19 @@
 
 /** True for pi's extension-runtime-invalidated error, and nothing else. */
 export function isStaleCtxError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err ?? "");
+  // Read the message without stringifying arbitrary objects: `String(err)` on
+  // a non-Error would yield "[object Object]" and match nothing, hiding a
+  // stale-ctx signal carried on a non-Error throw shape.
+  let message = "";
+  if (err instanceof Error) message = err.message;
+  else if (typeof err === "string") message = err;
+  else if (typeof err === "object" && err !== null) {
+    const m = (err as { message?: unknown }).message;
+    message = typeof m === "string" ? m : "";
+  } else if (typeof err === "number" || typeof err === "bigint" || typeof err === "boolean") {
+    message = String(err);
+  }
+  // symbol / function / null / undefined cannot carry the text; leave "".
   return message.includes("extension ctx is stale");
 }
 

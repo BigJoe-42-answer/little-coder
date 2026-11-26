@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import setupUpdateNotice, { upgradeArgs } from "./index.ts";
 
 describe("upgradeArgs", () => {
@@ -38,10 +38,10 @@ describe("update-notice extension wiring", () => {
   });
 
   function harness() {
-    const handlers: Record<string, Function> = {};
+    const handlers: Record<string, (...args: any[]) => unknown> = {};
     let command: { name: string; opts: any } | undefined;
     const pi = {
-      on(event: string, handler: Function) {
+      on(event: string, handler: (...args: any[]) => unknown) {
         handlers[event] = handler;
       },
       registerCommand(name: string, opts: any) {

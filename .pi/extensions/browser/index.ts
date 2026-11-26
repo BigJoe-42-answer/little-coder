@@ -86,7 +86,7 @@ async function ensureSession(): Promise<BrowserSession> {
   if (sess.page || sess.error) return sess;
   try {
     // Optional runtime dep; cast avoids requiring @types/playwright at build time
-    const playwright: any = await import("playwright" as any);
+    const playwright: any = await import("playwright");
     const browser = await playwright.chromium.launch({ headless: !headful() });
     const context = await browser.newContext({
       userAgent: "Mozilla/5.0 (little-coder research agent)",
@@ -289,7 +289,7 @@ export default function (pi: ExtensionAPI) {
       amount: Type.Optional(Type.Integer({ description: "Pixels (default 800)" })),
     }),
     async execute(_id, { direction, amount }) {
-      const dir = ((direction ?? "down") as string).toLowerCase();
+      const dir = ((direction ?? "down")).toLowerCase();
       const amt = typeof amount === "number" ? amount : 800;
       const sess = await ensureSession();
       if (sess.error) return errorResult(`Error: ${sess.error}`);
@@ -325,7 +325,7 @@ export default function (pi: ExtensionAPI) {
           sess.extractCache.set("full", text ?? "");
         }
         const full = sess.extractCache.get("full") ?? "";
-        const startRaw = parseInt((cursor ?? "0") as string, 10);
+        const startRaw = parseInt((cursor ?? "0"), 10);
         const start = Number.isFinite(startRaw) ? startRaw : 0;
         if (start < 0 || start >= full.length) {
           return textResult(`[cursor=${start} past end (length=${full.length})]`);

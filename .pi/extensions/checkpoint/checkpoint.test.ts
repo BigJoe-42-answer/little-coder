@@ -16,7 +16,7 @@ describe("checkpointPath", () => {
   });
   it("returns undefined when neither is a string", () => {
     expect(checkpointPath({})).toBeUndefined();
-    expect(checkpointPath({ path: 5 as unknown as string })).toBeUndefined();
+    expect(checkpointPath({ path: 5 })).toBeUndefined();
   });
 });
 

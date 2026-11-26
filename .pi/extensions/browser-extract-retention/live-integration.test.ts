@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pruneMessages, buildPlaceholder } from "./index.ts";
+import { pruneMessages } from "./index.ts";
 
 // Live integration test: runs Playwright against a real URL, extracts
 // with the same inlined Readability JS the Browser extension uses, then

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   extractJsonArray,
   digestReports,
@@ -273,9 +273,7 @@ describe("issue #98 - handlePlanApproval", () => {
       mkdirSync: (path: string, opts: { recursive: boolean }) => {
         fs.mkdirSyncCalls.push({ path, opts });
       },
-      readFileSync: (path: string, options?: any) => {
-        return "";
-      },
+      readFileSync: () => "",
     };
 
     const ui = {
@@ -428,7 +426,7 @@ describe("issue #98 - handleImplement", () => {
     const fs: MockFs = {
       planContent,
       readFileSyncFail: false,
-      readFileSync: (path: string, options?: any) => {
+      readFileSync: () => {
         if (fs.readFileSyncFail) {
           throw new Error("simulated read failure");
         }
@@ -669,7 +667,7 @@ describe("issue #98 - handleImplement", () => {
 
   it("executes in strict order: read → enterPhase → newSession → setup → withSession", async () => {
     const planText = "Step 1: Read auth.py\nStep 2: Fix login flow";
-    const { deps, enterPhaseCalls, newSession } = buildDeps(planText);
+    const { deps, enterPhaseCalls } = buildDeps(planText);
 
     const order: string[] = [];
 
@@ -688,7 +686,6 @@ describe("issue #98 - handleImplement", () => {
     };
 
     // Patch newSession to record when it starts and its callbacks
-    const originalNewSession = deps.newSession;
     deps.newSession = async (opts) => {
       order.push("newSession");
       if (opts?.setup) {

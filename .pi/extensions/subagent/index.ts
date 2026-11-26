@@ -104,7 +104,7 @@ export default function (pi: ExtensionAPI) {
         : params.tasks!.map((t, i) => ({ id: String(i + 1), label: t.label, task: t.task, cwd }));
 
       const model = currentModelId(ctx);
-      const tracker = new SubCoderTracker(ctx as any);
+      const tracker = new SubCoderTracker(ctx);
       tracker.begin(items.map((it) => ({ id: it.id, label: it.label })));
 
       const streamToToolCard = (results: SubCoderResult[]) => {

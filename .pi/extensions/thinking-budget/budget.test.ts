@@ -33,7 +33,7 @@ describe("thinking budget token estimation", () => {
 //   - the prior level is restored on the next genuine user input.
 
 interface Handler {
-  (event: any, ctx: any): Promise<unknown> | unknown;
+  (event: any, ctx: any): unknown;
 }
 
 function makeHarness(initialLevel = "high") {

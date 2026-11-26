@@ -57,10 +57,10 @@ function loadEntries(): void {
       let cost = typeof fm.token_cost === "number" ? fm.token_cost : 150;
       if (cost > PER_ENTRY_CAP) cost = PER_ENTRY_CAP;
       const keywords = Array.isArray(fm.keywords)
-        ? (fm.keywords as string[]).map((k) => k.toLowerCase())
+        ? (fm.keywords).map((k) => k.toLowerCase())
         : [];
       const requiresTools = Array.isArray(fm.requires_tools)
-        ? (fm.requires_tools as string[])
+        ? (fm.requires_tools)
         : [];
       entries.set(topic, { topic, body: parsed.body, tokenCost: cost, keywords, requiresTools });
     }

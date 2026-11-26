@@ -21,7 +21,7 @@ export function extractJsonArray(text: string): any[] {
 // Pull the first balanced JSON OBJECT out of a model reply (sibling to
 // extractJsonArray, for the rubric judge which returns an object). Returns null
 // on failure so callers can fall back.
-export function extractJsonObject(text: string): any | null {
+export function extractJsonObject(text: string): any {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) return null;

@@ -20,7 +20,7 @@ describe("parseManifest", () => {
   it("degrades to an empty manifest rather than throwing", () => {
     // /extensions saying "nothing recorded" beats it crashing the TUI.
     for (const raw of [undefined, "", "not json", "null", "[]", '"a string"', "7"]) {
-      const m = parseManifest(raw as string | undefined);
+      const m = parseManifest(raw);
       expect(m.bundled).toEqual([]);
       expect(m.warnings).toEqual([]);
       expect(m.piDiscovery).toBe(false);

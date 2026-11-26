@@ -48,7 +48,7 @@ describe("scheduleForceKill", () => {
     let killed = false;
     const fake = { kill: () => (killed = true) };
     await new Promise((r) => {
-      scheduleForceKill(fake as any, () => true, 5);
+      scheduleForceKill(fake, () => true, 5);
       setTimeout(r, 30);
     });
     expect(killed).toBe(false);

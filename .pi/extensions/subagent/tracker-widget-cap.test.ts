@@ -111,7 +111,7 @@ describe("stale context (the #108 / #119 shape)", () => {
   };
 
   it("begin/update/end are all no-ops on a disposed session instead of throwing", () => {
-    const t = new SubCoderTracker(deadCtx as any);
+    const t = new SubCoderTracker(deadCtx);
     expect(() => t.begin([{ id: "1", label: "a" }])).not.toThrow();
     expect(() => t.update([
       { id: "1", label: "a", exitCode: -1, report: "", errorMessage: "", usage: undefined } as any,
@@ -121,7 +121,7 @@ describe("stale context (the #108 / #119 shape)", () => {
 
   it("still paints while the session is alive", () => {
     const setWidget = vi.fn();
-    const t = new SubCoderTracker({ hasUI: true, ui: { setWidget } } as any);
+    const t = new SubCoderTracker({ hasUI: true, ui: { setWidget } });
     t.begin([{ id: "1", label: "a" }]);
     expect(setWidget).toHaveBeenCalled();
     t.end();

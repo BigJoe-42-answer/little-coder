@@ -67,10 +67,10 @@ export function mergeLittleCoder(
   for (const [key, value] of Object.entries(overlay ?? {})) {
     const baseVal = (base as Record<string, unknown>)[key];
     if (key === "model_profiles" && isRecord(baseVal) && isRecord(value)) {
-      const profiles: Record<string, unknown> = { ...(baseVal as Record<string, unknown>) };
+      const profiles: Record<string, unknown> = { ...(baseVal) };
       for (const [pk, pv] of Object.entries(value)) {
         profiles[pk] = isRecord(pv) && isRecord(profiles[pk])
-          ? { ...(profiles[pk] as Record<string, unknown>), ...pv }
+          ? { ...(profiles[pk]), ...pv }
           : pv;
       }
       out.model_profiles = profiles as Record<string, ModelProfile>;

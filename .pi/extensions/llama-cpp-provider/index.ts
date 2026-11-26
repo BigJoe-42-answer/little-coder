@@ -148,7 +148,7 @@ export default async function (pi: ExtensionAPI) {
   // honor the same LITTLE_CODER_NO_CTX_PROBE opt-out.
   if (!probeDisabled && llamacpp) {
     pi.on("model_select", async (event, ctx) => {
-      const lc = llamacpp!;
+      const lc = llamacpp;
       const model = (event as any).model;
       const previous = (event as any).previousModel;
       if (!model || model.provider !== "llamacpp" || !previous) return;

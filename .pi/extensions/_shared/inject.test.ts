@@ -7,9 +7,9 @@ const systemMode = { LITTLE_CODER_INJECT_MODE: "system" } as NodeJS.ProcessEnv;
 describe("injectMode", () => {
   it("defaults to tail-message delivery", () => {
     expect(injectMode(messageMode)).toBe("message");
-    expect(injectMode({ LITTLE_CODER_INJECT_MODE: "" } as NodeJS.ProcessEnv)).toBe("message");
+    expect(injectMode({ LITTLE_CODER_INJECT_MODE: "" })).toBe("message");
     // Anything other than the exact opt-out keeps the cache-safe default.
-    expect(injectMode({ LITTLE_CODER_INJECT_MODE: "msg" } as NodeJS.ProcessEnv)).toBe("message");
+    expect(injectMode({ LITTLE_CODER_INJECT_MODE: "msg" })).toBe("message");
   });
 
   it("honors the LITTLE_CODER_INJECT_MODE=system escape hatch", () => {

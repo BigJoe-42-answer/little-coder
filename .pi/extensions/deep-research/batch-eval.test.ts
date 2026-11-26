@@ -27,7 +27,7 @@ import { topicsForRound, type Topic } from "./topics.ts";
 //   DR_EVAL=1 DR_ROUND=1 DR_M=6 npx vitest run .pi/extensions/deep-research/batch-eval.test.ts
 
 const EVAL = process.env.DR_EVAL === "1";
-const ROUND = (Number(process.env.DR_ROUND) === 2 ? 2 : 1) as 1 | 2;
+const ROUND = (Number(process.env.DR_ROUND) === 2 ? 2 : 1);
 const M = Number(process.env.DR_M) > 0 ? Number(process.env.DR_M) : 6;
 const MODEL = process.env.DR_MODEL || undefined;
 const ONLY = (process.env.DR_ONLY || "").split(",").map((s) => s.trim()).filter(Boolean);

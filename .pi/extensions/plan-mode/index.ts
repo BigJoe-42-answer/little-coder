@@ -662,7 +662,7 @@ async function orchestrate(
     status.stop();
     dropEsc();
 
-    const answers = isBatchRun((ctx as any).mode)
+    const answers = isBatchRun((ctx).mode)
       ? batchAnswers(questions)
       : questions.length > 0
         ? await askQuestions(ctx, questions)

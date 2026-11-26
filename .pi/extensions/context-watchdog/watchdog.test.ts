@@ -80,10 +80,10 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
       const sendUserMessage = vi.fn();
       const pi = {
-        on: (evt: string, h: Function) => { handlers[evt] = h; },
+        on: (evt: string, h: (...args: any[]) => unknown) => { handlers[evt] = h; },
         sendUserMessage,
       };
       setupWatchdog(pi as any);
@@ -117,9 +117,9 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
       const sendUserMessage = vi.fn();
-      const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+      const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
       setupWatchdog(pi as any);
 
       // Mutable usage so we can model a compaction that actually frees space:
@@ -155,9 +155,9 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
       const sendUserMessage = vi.fn();
-      const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+      const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
       setupWatchdog(pi as any);
 
       // The #68 shape: after compaction the resumed run re-reads files and usage
@@ -206,8 +206,8 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
-      const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage: vi.fn() };
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
+      const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage: vi.fn() };
       setupWatchdog(pi as any);
 
       const compact = vi.fn();
@@ -253,8 +253,8 @@ describe("shouldCompactNow", () => {
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
       for (const mode of ["print", "json", "rpc"]) {
-        const handlers: Record<string, Function> = {};
-        const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage: vi.fn() };
+        const handlers: Record<string, (...args: any[]) => unknown> = {};
+        const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage: vi.fn() };
         setupWatchdog(pi as any);
 
         const compact = vi.fn();
@@ -277,9 +277,9 @@ describe("shouldCompactNow", () => {
   });
 
   it("#115: headless queues a continuation when pi compacts on its own", async () => {
-    const handlers: Record<string, Function> = {};
+    const handlers: Record<string, (...args: any[]) => unknown> = {};
     const sendUserMessage = vi.fn();
-    const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+    const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
     setupWatchdog(pi as any);
 
     // pi's threshold compaction ends with `return this.agent.hasQueuedMessages()`,
@@ -290,9 +290,9 @@ describe("shouldCompactNow", () => {
   });
 
   it("#115: does not queue on overflow recovery (pi retries that turn itself)", async () => {
-    const handlers: Record<string, Function> = {};
+    const handlers: Record<string, (...args: any[]) => unknown> = {};
     const sendUserMessage = vi.fn();
-    const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+    const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
     setupWatchdog(pi as any);
 
     await handlers.session_compact({ reason: "overflow", willRetry: true }, { mode: "print" });
@@ -300,9 +300,9 @@ describe("shouldCompactNow", () => {
   });
 
   it("#115: the TUI does not double-resume (its own callback already does)", async () => {
-    const handlers: Record<string, Function> = {};
+    const handlers: Record<string, (...args: any[]) => unknown> = {};
     const sendUserMessage = vi.fn();
-    const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+    const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
     setupWatchdog(pi as any);
 
     await handlers.session_compact({ reason: "threshold", willRetry: false }, { mode: "tui" });
@@ -331,9 +331,9 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
       const sendUserMessage = vi.fn();
-      const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+      const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
       setupWatchdog(pi as any);
 
       let percent = 88;
@@ -377,7 +377,7 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
       // pi invalidates the whole extension runtime on dispose: the ctx.ui getter
       // and pi.sendUserMessage both throw from that point on. pi calls our
       // callbacks from a floating promise, so a throw here is an unhandled
@@ -386,7 +386,7 @@ describe("shouldCompactNow", () => {
       const stale = () => { throw new Error("This extension ctx is stale after session replacement or reload."); };
       const notify = vi.fn(() => { if (!live) stale(); });
       const sendUserMessage = vi.fn(() => { if (!live) stale(); });
-      const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+      const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
       setupWatchdog(pi as any);
 
       const compact = vi.fn();
@@ -417,9 +417,9 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
       const sendUserMessage = vi.fn();
-      const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage };
+      const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage };
       setupWatchdog(pi as any);
 
       const compact = vi.fn();
@@ -451,8 +451,8 @@ describe("shouldCompactNow", () => {
     const env = process.env.LITTLE_CODER_COMPACT_AT_PERCENT;
     process.env.LITTLE_CODER_COMPACT_AT_PERCENT = "80";
     try {
-      const handlers: Record<string, Function> = {};
-      const pi = { on: (e: string, h: Function) => { handlers[e] = h; }, sendUserMessage: vi.fn() };
+      const handlers: Record<string, (...args: any[]) => unknown> = {};
+      const pi = { on: (e: string, h: (...args: any[]) => unknown) => { handlers[e] = h; }, sendUserMessage: vi.fn() };
       setupWatchdog(pi as any);
 
       const compact = vi.fn();

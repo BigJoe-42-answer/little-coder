@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { isStaleCtxError, tryCtx, hasLiveUI } from "./safe-ctx.ts";
 
 const STALE = new Error(

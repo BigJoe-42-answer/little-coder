@@ -284,7 +284,7 @@ describe("layered settings merge (issue #130)", () => {
     } finally {
       rmSync(dirs, { recursive: true, force: true });
     }
-    const paths = settingsCandidatePaths({ HOME: "/home/u" } as NodeJS.ProcessEnv);
+    const paths = settingsCandidatePaths({ HOME: "/home/u" });
     expect(paths[0]).toBe(join(here, "..", "..", "settings.json"));
     expect(paths[1]).toBe(join("/home/u", ".pi", "agent", "settings.json"));
     expect(paths[2]).toBe(join("/home/u", ".config", "little-coder", "settings.json"));
@@ -295,7 +295,7 @@ describe("layered settings merge (issue #130)", () => {
       HOME: "/home/u",
       PI_CODING_AGENT_DIR: "/elsewhere/agent",
       XDG_CONFIG_HOME: "/elsewhere/config",
-    } as NodeJS.ProcessEnv);
+    });
     expect(paths[1]).toBe(join("/elsewhere/agent", "settings.json"));
     expect(paths[2]).toBe(join("/elsewhere/config", "little-coder", "settings.json"));
   });

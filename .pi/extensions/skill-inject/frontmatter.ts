@@ -20,7 +20,7 @@ export function parseSkillFile(text: string): ParsedSkill | null {
     const m = line.match(/^(\w[\w_-]*)\s*:\s*(.*)$/);
     if (!m) continue;
     const key = m[1].trim();
-    let val = m[2].trim();
+    const val = m[2].trim();
     if (val.startsWith("[") && val.endsWith("]")) {
       fm[key] = val
         .slice(1, -1)

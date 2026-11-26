@@ -213,7 +213,7 @@ function attachStreams(pi: ExtensionAPI, job: Job): void {
   };
   job.proc.on("close", (code) => finish(code ?? 0));
   job.proc.on("error", (err) => {
-    job.buffer.push(`[spawn error] ${String((err as Error)?.message ?? err)}`);
+    job.buffer.push(`[spawn error] ${String((err)?.message ?? err)}`);
     finish(-1);
   });
 }
@@ -264,7 +264,7 @@ function killJob(job: Job): void {
   // proc.killed — which Node sets on dispatch, making the old check unreachable
   // (PR #102).
   scheduleForceKill(
-    { kill: (s?: any) => { signalGroup(job, (s ?? "SIGKILL") as NodeJS.Signals); return true; } } as any,
+    { kill: (s?: any) => { signalGroup(job, (s ?? "SIGKILL") as NodeJS.Signals); return true; } },
     () => job.exited,
   );
 }

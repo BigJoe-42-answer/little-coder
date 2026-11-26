@@ -44,7 +44,7 @@ describe("resolvePhaseDefaults", () => {
     const d = resolvePhaseDefaults(shipped, { planModel: "ollama/planner" }, {
       LITTLE_CODER_PLAN_MODEL: "lmstudio/env-planner",
       LITTLE_CODER_MODEL_HANDOVER: "auto",
-    } as any);
+    });
     expect(d.planModel).toBe("lmstudio/env-planner");
     expect(d.handover).toBe("auto");
   });
@@ -59,7 +59,7 @@ describe("resolvePhaseDefaults", () => {
     const d = resolvePhaseDefaults(shipped, undefined, {
       LITTLE_CODER_PLAN_MODEL: "not-a-ref",
       LITTLE_CODER_MODEL_HANDOVER: "sometimes",
-    } as any);
+    });
     expect(d.planModel).toBe("llamacpp/big");
     expect(d.handover).toBe("manual");
   });

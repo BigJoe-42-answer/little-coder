@@ -37,7 +37,7 @@ describe("parseDuration", () => {
   // A typo must disable the rule, not silently mean "0ms" (= wake constantly).
   it("returns null for nonsense rather than zero", () => {
     for (const bad of ["", "soon", "-5s", "0", {}, null, undefined]) {
-      expect(parseDuration(bad as any), String(bad)).toBeNull();
+      expect(parseDuration(bad as any), JSON.stringify(bad) ?? typeof bad).toBeNull();
     }
   });
 });
