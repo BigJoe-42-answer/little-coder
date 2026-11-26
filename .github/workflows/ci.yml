@@ -47,6 +47,11 @@ jobs:
       # edit-repair patches.
       - run: npm run typecheck
 
+      # Type-checked ESLint (eslint.config.mjs): typescript-eslint's
+      # recommendedTypeChecked over the extension layer, with the `any`
+      # boundary exemptions documented in the config header.
+      - run: npm run lint
+
       # Chromium for the live browser suites (see header comment). The ubuntu
       # runner image already carries the system libraries, so no --with-deps.
       - run: npx playwright install chromium

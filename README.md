@@ -574,6 +574,8 @@ To unlink: `npm unlink -g little-coder`.
 
 The benchmarks harness (`benchmarks/`) is dev-only and not shipped with the npm package. Run it from a clone with `python3 benchmarks/aider_polyglot.py …` etc.
 
+Three gates run on every push/PR and locally: `npm run typecheck` (tsc `--strict` — already on in `tsconfig.json`), `npm run lint` (typescript-eslint **type-checked** rules over the same file set; the deliberate `any`-boundary exemptions are documented in [`eslint.config.mjs`](eslint.config.mjs)), and `npx vitest run`.
+
 ---
 
 ## Architecture
