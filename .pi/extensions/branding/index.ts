@@ -21,7 +21,7 @@ import { truncateLineToWidth } from "../_shared/width.ts";
 // the factory returns a duck-typed Component (`render(width): string[]` +
 // `invalidate()`), so no deep imports from pi-tui are needed.
 
-const TAGLINE = "A coding agent tuned for small local models";
+const TAGLINE = "A fork of little-coder, tuned for small local models";
 
 // Brand accent — "honey" #E15A1F from the brand book (v1.0). Emitted as a
 // 24-bit truecolor SGR so the cursor matches the documented hex exactly,
