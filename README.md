@@ -634,41 +634,14 @@ In `auto` and `accept-all`, write/edit confirmations are pi's own; `manual` adds
 
 ---
 
-## Paper / benchmark results
+## Upstream background
 
-| Release | Model | Benchmark | Result |
-|---|---|---|---|
-| [**v0.0.2**](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.2) (commit `1d62bde`) — the paper | Qwen3.5-9B via Ollama | Aider Polyglot (225 exercises) | **45.56 %** mean of two runs; matched-model vanilla Aider baseline 19.11 %. Paper: [*Honey, I Shrunk the Coding Agent* on Substack](https://open.substack.com/pub/itayinbarr/p/honey-i-shrunk-the-coding-agent). |
-| [**v0.0.5**](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.5) — pre-pi Python | Qwen3.6-35B-A3B via llama.cpp | Aider Polyglot | **78.67 %**. [Full narrative](docs/benchmark-qwen3.6-35b-a3b.md). |
-| [**v0.1.4**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.4) — on pi | Qwen3.6-35B-A3B via llama.cpp | Terminal-Bench-Core v0.1.1 (80 tasks) | **40.0 %** in 6 h 50 min. [Write-up](docs/benchmark-terminal-bench-v0.1.1.md). |
-| [**v0.1.13**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.13) — on pi, TB 2.0 leaderboard | Qwen3.6-35B-A3B via llama.cpp | Terminal-Bench 2.0 (89 tasks × 5 trials = 445) | **24.6 % ± 3.2** — accepted to the [Terminal-Bench 2.0 leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.0) (rank 120). |
-| [**v0.1.24**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.24) — on pi, TB 2.0 leaderboard, smaller model | Qwen3.5-9B (Q4_K_M) via llama.cpp (5.3 GB on GPU, 2× faster per-token than the 35B-A3B) | Terminal-Bench 2.0 (89 tasks × 5 trials = 445) | **9.2 % ± 2.4** — accepted to the [Terminal-Bench 2.0 leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.0) (rank 142). |
-| [**v0.1.27**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.27) — on pi, GAIA validation | Qwen3.6-35B-A3B via llama.cpp | GAIA validation set (165 tasks) | **40.00 %** (66 / 165). L1 60.4 % / L2 37.2 % / L3 7.7 %. Test-split run pending. |
-
-All runs used a consumer laptop: i9-14900HX, 32 GB RAM, **8 GB VRAM** on RTX 5070 Laptop (Blackwell). No cloud inference at any point.
-
----
-
-## Roadmap
-
-**Phase 1 — wide benchmark baseline: complete.** The paper established that scaffold–model fit moves a 9.7 B model from 19 % to 45 % on Aider Polyglot, and the goal of Phase 1 was to find out how wide that impact radius is. We now have a four-benchmark baseline on a single laptop-class GPU:
-
-1. **Aider Polyglot** — 45.56 % (paper, Qwen3.5-9B) and 78.67 % (v0.0.5, Qwen3.6-35B-A3B).
-2. **Terminal-Bench-Core v0.1.1** — 40.0 % (v0.1.4).
-3. **Terminal-Bench 2.0** — accepted to the [official leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.0): Qwen3.6-35B-A3B at **24.6 % ± 3.2** (rank 120) and Qwen3.5-9B at **9.2 % ± 2.4** (rank 142). The v0.1.24 prompt-repetition fix (re-add tool descriptions + concision guideline, validated by a 4 / 4 pilot on the previously-regressing `prove-plus-comm` task) was the prompt for both submissions.
-4. **GAIA** — validation set at v0.1.27: **40.00 %** (66 / 165) on Qwen3.6-35B-A3B. Per-level L1 60.4 % / L2 37.2 % / L3 7.7 %.
-
-That spans short coding exercises (Polyglot), interactive shell-bound tasks (Terminal-Bench), and tool-using research (GAIA), all on the same scaffold. The data needed to choose what to fix next is now in hand.
-
-**Phase 2 — operating real knowledge bases as day-to-day work: the current focus.** The motivating question shifts from *how wide is the impact radius?* to *can a small local model reliably operate and traverse a large, messy knowledge base?* little-coder's day-to-day target is now real work over **many markdown files at once** — reading, cross-referencing, and updating sprawling note/log collections in the most token-efficient way a small local model can manage. Features are being implemented and tested across several real pipelines in parallel:
-
-- **Domains** — medical, athletic, and educational knowledge bases, each with its own structure, vocabulary, and citation needs.
-- **Scale** — 10+ years of logs, tens of thousands of entries of varied kinds, stressing retrieval, compaction, and the context-budgeting extensions on histories far longer than any single benchmark task.
-- **Messy real-world inputs** — validation against conflicting OCR extractions of the same source, and multilingual content where the same fact recurs across languages.
-
-This is where the scaffolding work now compounds: knowledge injection/selection, evidence handling, compaction fidelity, and the harness-intervention behaviors. Expect smaller, more frequent releases driven by what little-coder actually struggles with on this work rather than by a benchmark suite.
-
-**Benchmarks (deferred).** The four-benchmark baseline above stands as the scaffold-fit reference point. Fresh runs — **ProgramBench**, SWE-bench Verified (multi-file real-world patches), a GAIA test split — come back into scope once the knowledge-base work has produced enough scaffolding signal to make a new measurement worth running.
+The benchmark tables (the paper, Aider Polyglot, the Terminal-Bench 2.0
+leaderboard entries, GAIA), the upstream roadmap, the whitepaper citation, and
+the v0.0.2 paper-reproduction recipe are upstream's story rather than this
+fork's — they live in the
+[upstream README](https://github.com/itayinbarr/little-coder#readme). The
+lineage credits stay in [Attribution](#attribution).
 
 ---
 
@@ -712,33 +685,14 @@ This is where the scaffolding work now compounds: knowledge injection/selection,
 
 ---
 
-## Developing little-coder locally
-
-If you want to hack on the extensions or skills:
-
-```bash
-git clone https://github.com/itayinbarr/little-coder.git
-cd little-coder
-npm install
-npm link            # makes the local checkout available as `little-coder`
-little-coder --model llamacpp/qwen3.6-35b-a3b
-```
-
-To unlink: `npm unlink -g little-coder`.
-
-The benchmarks harness (`benchmarks/`) is dev-only and not shipped with the npm package. Run it from a clone with `python3 benchmarks/aider_polyglot.py …` etc.
-
-Three gates run on every push/PR and locally: `npm run typecheck` (tsc `--strict` — already on in `tsconfig.json`), `npm run lint` (typescript-eslint **type-checked** rules over the same file set; the deliberate `any`-boundary exemptions are documented in [`eslint.config.mjs`](eslint.config.mjs)), and `npx vitest run`.
-
----
-
 ## Architecture
 
 ```
 little-coder/
 ├── .pi/
 │   ├── settings.json               # per-model profiles + benchmark_overrides (terminal_bench, gaia)
-│   └── extensions/                 # 27 TypeScript extensions, auto-discovered by pi
+│   └── extensions/                 # 36 TypeScript extensions (+ _shared/ helpers), auto-discovered by pi
+│   │                               # (load-bearing subset listed)
 │       ├── branding/               # little-coder startup header + terminal title + session auto-naming
 │       ├── plan-mode/              # alt+p "research → ask → plan" flow (sub-coders + clarifying questions → written plan)
 │       ├── subagent/              # `dispatch` tool: isolated read/browse-only sub-coders + live tracker (spawn.ts engine)
@@ -747,73 +701,46 @@ little-coder/
 │       ├── write-guard/            # Write refuses on existing files; rewrites root-bare /foo.md paths to cwd
 │       ├── read-guard/             # trims a Read that would overflow the context window to its first 30 lines + a search-instead directive
 │       ├── read-guard-edit/        # Edit refuses until the file has been Read this session
-│       ├── extra-tools/            # glob, webfetch, websearch (pi ships grep/find)
+│       ├── extra-tools/            # glob; webfetch (fork: block-level extraction in extract.ts, objective-ranked excerpts); websearch (fork: provider-selected duckduckgo|searxng in search.ts)
 │       ├── skill-inject/           # per-turn tool-skill selection (error > recency > intent)
 │       ├── knowledge-inject/       # algorithm cheat-sheet scoring (word=1.0, bigram=2.0, threshold=2.0)
 │       ├── output-parser/          # repair malformed ```tool, <tool_call>, bare JSON
 │       ├── quality-monitor/        # empty / hallucinated / loop detection + correction follow-up
-│       ├── thinking-budget/        # cap thinking tokens per turn, retry with thinking off
+│       ├── thinking-budget/        # cap thinking tokens per turn, retry with thinking off (fork: env → profile → default order)
 │       ├── permission-gate/        # bash whitelist (ls, cat, git log/status/diff, etc.)
+│       ├── url-gate/               # FORK: URL allowlist across webfetch, websearch, browser, and shell commands (gate.ts matching + hot-reloaded policy file)
 │       ├── checkpoint/             # snapshot files before Write/Edit
 │       ├── tool-gating/            # enforces _allowed_tools at exec + schema levels
 │       ├── turn-cap/               # max_turns abort (Polyglot unbounded, TB 40, GAIA 30)
-│       ├── benchmark-profiles/     # reads settings.json → systemPromptOptions + sets temperature
+│       ├── benchmark-profiles/     # reads settings.json → systemPromptOptions + sets temperature (fork: merges user settings.json field-by-field)
 │       ├── shell-session/          # ShellSession[Cwd|Reset] — tmux-proxy + subprocess backends
-│       ├── browser/                # Playwright BrowserNavigate/Click/Type/Scroll/Extract/Back/History
+│       ├── browser/                # Playwright BrowserNavigate/Click/Type/Scroll/Extract/Back/History (fork: request-gate.ts enforces url-gate at the CDP request layer, every redirect hop)
 │       ├── evidence/               # EvidenceAdd/Get/List — per-session store, 1 KB snippet cap
 │       └── evidence-compact/       # preserves evidence across pi's auto-compaction
-├── skills/                         # 30 markdown files the extensions inject on demand
-│   ├── tools/*.md                  #   14 tool-usage cards
+├── skills/                         # 31 markdown files the extensions inject on demand
+│   ├── tools/*.md                  #   15 tool-usage cards
 │   ├── knowledge/*.md              #   13 algorithm cheat sheets
 │   └── protocols/*.md              #    3 research/cite/decomposition workflows
-├── benchmarks/
-│   ├── rpc_client.py               # PiRpc — spawns `pi --mode rpc`, demuxes events + UI requests
-│   ├── aider_polyglot.py           # Polyglot driver with per-language transforms
-│   ├── tb_adapter/                 # Terminal-Bench 1.0 BaseAgent (tmux-proxy)
-│   ├── harbor_adapter/             # Terminal-Bench 2.0 BaseAgent (async env.exec proxy)
-│   ├── tb_pilot.sh / harbor_pilot.sh
-│   ├── tb_status.sh / harbor_status.sh
-│   └── test_rpc_client.py
+├── benchmarks/                     # dev-only harness (rpc_client.py, Polyglot driver, TB adapters)
+├── launch/                         # FORK: `little-coder` PATH shim + lc-searxng.container quadlet unit + Desktop entries + brand icons
+├── config/
+│   └── url-whitelist.json          # FORK: tracked url-gate policy template (runtime reads ~/.config/little-coder/url-whitelist.json)
+├── scripts/
+│   └── patch-pi.mjs                # launch-time pi patches, no npm install hooks (fork: anchors reach the hashed bundle the bin runs)
+├── start-little-coder.sh           # FORK: launcher — PATH shim, web-provider env, session-scoped SearXNG lifecycle
+├── install.sh                      # FORK: fork-aware installer (--desktop = quadlet + icons + entries + whitelist)
 ├── AGENTS.md                       # project system prompt (pi discovers it automatically)
 ├── models.json                     # canonical provider registration (loaded by llama-cpp-provider; user override at $XDG_CONFIG_HOME/little-coder/models.json)
 └── docs/
     ├── benchmark-*.md              # per-benchmark narratives
+    ├── url-gate-todo.md            # FORK: url-gate known gaps and open work
+    ├── web-search-open-plan.md     # FORK: the SearXNG/extraction plan
     └── architecture.md             # v0.0.5-era Python architecture (historical)
 ```
 
 **Key invariant.** pi is a minimal base by design. Every little-coder mechanism ships as a pi extension that hooks pi's lifecycle events (`before_agent_start`, `context`, `before_provider_request`, `tool_call`, `tool_result`, `turn_end`, `session_compact`). Extensions are independent: the launcher discovers every `.pi/extensions/*/index.ts` and loads it explicitly with `--extension`, and pi runs with `--no-extensions`, so the bundled set is exactly what loads — no more, no less. If you don't want one, delete its directory; if you want to add another, drop it next to the existing ones (or pass `-e <path>` at launch).
 
 ---
-
-## Reproducing the paper (v0.0.2)
-
-```bash
-git clone https://github.com/itayinbarr/little-coder.git
-cd little-coder
-git checkout v0.0.2
-# Follow that version's README for its Python setup (pip install -e .)
-```
-
-The paper ran `ollama/qwen3.5` through the Python little-coder at commit **`1d62bde`** (tag [`v0.0.2`](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.2)). The 45.56 % mean figure is the average of two full 225-exercise runs on that exact codebase. For the 78.67 % headline, check out tag [`v0.0.5`](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.5) — both are pre-pi Python and follow the pre-pi setup.
-
----
-
-## Citation
-
-```bibtex
-@misc{inbar2026littlecoder,
-  title        = {little-coder: A Coding Agent Optimized for Small Local Language Models},
-  subtitle     = {Architectural Adaptation Lets a 9.7B Model Outperform Frontier Models on Aider Polyglot},
-  author       = {Inbar, Itay},
-  year         = {2026},
-  month        = apr,
-  howpublished = {\url{https://open.substack.com/pub/itayinbarr/p/honey-i-shrunk-the-coding-agent}},
-  note         = {White paper}
-}
-```
-
----
-
 ## Attribution
 
 little-coder v0.0.x was a derivative work of [CheetahClaws / ClawSpring](https://github.com/SafeRL-Lab/clawspring) by SafeRL-Lab, Apache 2.0. That upstream provided the Python agent substrate, tool system, multi-provider support, and REPL.
