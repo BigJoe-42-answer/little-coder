@@ -103,6 +103,19 @@ not what this is for; the whitelist entry stays a loopback host):
    gio set ~/Desktop/little-coder-research.desktop metadata::trusted true
    ```
 
+**Desktop icons**: `launch/icons/` carries the three brand icons, built from
+the banner palette (warm-black terminal card `#1A1410`, cream `lc` monogram
+`#F2EBDC`, honey block cursor `#E15A1F`): the base icon, a gentler variant for
+the alt launcher (softer card, dusty-amber accent), and the research variant
+(base theme + honey magnifier). Install them into the user icon theme and set
+`Icon=little-coder` / `little-coder-alt` / `little-coder-research` in the
+matching `.desktop` entries:
+```bash
+for i in little-coder little-coder-alt little-coder-research; do
+  install -D -m 644 launch/icons/$i.svg ~/.local/share/icons/hicolor/scalable/apps/$i.svg
+done
+```
+
 The **launcher owns the container lifecycle**: with provider `searxng`,
 `start-little-coder.sh` starts `lc-searxng.service` (idempotent — a container
 left by a crashed session is reused), waits up to ~15 s for the instance to

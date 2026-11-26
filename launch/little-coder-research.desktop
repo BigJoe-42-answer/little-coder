@@ -7,7 +7,7 @@ Comment=little-coder with the self-hosted SearXNG web search backend (container 
 Exec=env LITTLE_CODER_WEB_PROVIDER=searxng /home/fred/Projects/little-coder/start-little-coder.sh
 GenericName[en_US]=
 GenericName=little-coder research
-Icon=system-run
+Icon=little-coder-research
 MimeType=
 Name[en_US]=little-coder research
 Name=little-coder research

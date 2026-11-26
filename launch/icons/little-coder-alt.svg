@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- little-coder alt: same motif as the base icon, gentler theme — softer
+       card (less contrast), dusty amber instead of hot honey, rounded cursor,
+       dimmer dots. Family resemblance on purpose: it is the same launcher
+       with a different system prompt. -->
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="#2B2620"/>
+  <circle cx="52" cy="58" r="7" fill="#D9A05B" opacity="0.85"/>
+  <circle cx="76" cy="58" r="7" fill="#EDE4D3" opacity="0.18"/>
+  <circle cx="100" cy="58" r="7" fill="#EDE4D3" opacity="0.18"/>
+  <line x1="30" y1="80" x2="226" y2="80" stroke="#EDE4D3" stroke-opacity="0.10" stroke-width="2"/>
+  <text x="52" y="186" font-family="'IBM Plex Mono',ui-monospace,Menlo,monospace"
+        font-size="112" font-weight="700" letter-spacing="-4" fill="#EDE4D3" opacity="0.92">lc</text>
+  <rect x="158" y="106" width="34" height="84" rx="8" fill="#D9A05B" opacity="0.85"/>
+</svg>
